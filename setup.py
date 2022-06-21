@@ -28,7 +28,8 @@ def get_extension() -> Extension:
             "LLVM"
         ],
         extra_compile_args=[
-            "-std=c++14"
+            "-std=c++14",
+            "-DSTRIP_ERROR_MESSAGES=1",
         ]
     )
 
