@@ -1,8 +1,8 @@
 #include "ATen/core/dispatch/Dispatcher.h"
-#include "ATen/core/operator_name.h"
-#include "ATen/ops/ones.h"
-#include "ATen/ops/scalar_tensor.h"
+#include "ATen/ops/add.h"
 #include "ATen/ops/tensor.h"
+#include "ATen/ops/ones.h"
+#include "c10/core/Device.h"
 #include "c10/core/DeviceType.h"
 #include "c10/core/DispatchKey.h"
 #include "c10/core/TensorOptions.h"
@@ -15,23 +15,9 @@
 #include "llvm/Support/TargetSelect.h"
 
 #include <iostream>
-#include <llvm/ADT/DenseMap.h>
-#include <llvm/ADT/DenseSet.h>
-#include <llvm/ExecutionEngine/JITSymbol.h>
-#include <llvm/ExecutionEngine/Orc/Core.h>
-#include <llvm/ExecutionEngine/Orc/ExecutionUtils.h>
-#include <llvm/ExecutionEngine/Orc/SymbolStringPool.h>
-#include <llvm/IR/DerivedTypes.h>
-#include <llvm/IR/Function.h>
-#include <llvm/IR/LLVMContext.h>
-#include <llvm/IR/Module.h>
-#include <llvm/IR/TypeFinder.h>
-#include <llvm/Support/DynamicLibrary.h>
-#include <llvm/Support/Error.h>
-#include <llvm/Support/raw_ostream.h>
+#include <iterator>
 #include <memory>
 
-#include <ATen/Functions.h>
 #include <torch/csrc/utils/pybind.h>
 #include <unordered_map>
 
@@ -73,13 +59,7 @@ static std::string stdstr(const py::object &obj) { return py::str(obj); }
 
 } // namespace
 
-namespace _C {
-
-void print_args(py::args args) {
-  for (auto &a : args) {
-    std::cout << "Arg: " << a << std::endl;
-  }
-}
+namespace tdnat {
 
 py::cpp_function jit_compile_test() {
   auto c = std::make_unique<LLVMContext>();
@@ -212,11 +192,7 @@ Program Program::from_obj(const py::object &obj) {
 void dump_graph(const py::object &obj) { Program::from_obj(obj); }
 
 void dump_operations() {
-  at::Tensor a = at::ones({5});
-  std::cout << at::add(a, a) << std::endl;
-
   auto &dispatcher = c10::Dispatcher::singleton();
-  dispatcher.checkInvariants();
   auto opnames = dispatcher.getAllOpNames();
   std::cout << "Len: " << opnames.size() << std::endl;
   for (auto &op : opnames) {
@@ -232,10 +208,15 @@ namespace {
 
 PYBIND11_MODULE(_C, m) {
   initialize_llvm_jit_engine();
-  m.def("hello", []() { return "Hello World"; });
-  m.def("jit_test", &_C::jit_compile_test);
-  m.def("dump_graph", &_C::dump_graph);
-  m.def("dump_operations", &_C::dump_operations);
+
+  // Testing a simple JIT example.
+  m.def("jit_test", &tdnat::jit_compile_test);
+
+  // Try to parse the FX graph and dump it.
+  m.def("dump_graph", &tdnat::dump_graph);
+
+  // Dump the operations found in the dispatcher.
+  m.def("dump_operations", &tdnat::dump_operations);
 }
 
 } // namespace
