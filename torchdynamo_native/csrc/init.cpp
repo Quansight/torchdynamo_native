@@ -21,6 +21,8 @@
 #include <torch/csrc/utils/pybind.h>
 #include <unordered_map>
 
+#include <torchdynamo_native/csrc/utils.h>
+
 void dump_tensor(const at::Tensor &t) { std::cout << t << std::endl; }
 
 at::Tensor one_dim_tensor(int i) { return at::ones({i}); }
