@@ -1,0 +1,6 @@
+[submodule "torchdynamo"]
+	path = third-party/torchdynamo
+	url = https://github.com/pytorch/torchdynamo
+[submodule "pytorch"]
+	path = third-party/pytorch
+	url = https://github.com/pytorch/pytorch
