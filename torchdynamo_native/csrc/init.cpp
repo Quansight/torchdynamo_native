@@ -1,7 +1,7 @@
 #include "ATen/core/dispatch/Dispatcher.h"
 #include "ATen/ops/add.h"
-#include "ATen/ops/tensor.h"
 #include "ATen/ops/ones.h"
+#include "ATen/ops/tensor.h"
 #include "c10/core/Device.h"
 #include "c10/core/DeviceType.h"
 #include "c10/core/DispatchKey.h"
@@ -9,6 +9,7 @@
 #include "c10/util/Exception.h"
 #include "pybind11/pybind11.h"
 #include "pybind11/pytypes.h"
+#include "third-party/pytorch/aten/src/ATen/core/ATen_fwd.h"
 #include "llvm/ExecutionEngine/Orc/LLJIT.h"
 #include "llvm/ExecutionEngine/Orc/ThreadSafeModule.h"
 #include "llvm/IR/IRBuilder.h"
@@ -16,12 +17,17 @@
 
 #include <iostream>
 #include <iterator>
+#include <llvm/IR/BasicBlock.h>
+#include <llvm/IR/DerivedTypes.h>
+#include <llvm/IR/Function.h>
+#include <llvm/IR/GlobalVariable.h>
+#include <llvm/IR/LLVMContext.h>
+#include <llvm/IR/Module.h>
+#include <llvm/IR/Value.h>
 #include <memory>
 
 #include <torch/csrc/utils/pybind.h>
 #include <unordered_map>
-
-#include <torchdynamo_native/csrc/utils.h>
 
 void dump_tensor(const at::Tensor &t) { std::cout << t << std::endl; }
 
@@ -55,6 +61,18 @@ static void initialize_llvm_jit_engine() {
   InitializeNativeTarget();
   InitializeNativeTargetAsmParser();
   InitializeNativeTargetAsmPrinter();
+}
+
+static LLVMContext *get_context() {
+  static std::unique_ptr<LLVMContext> context(nullptr);
+  if (context.get() == nullptr) {
+    context.reset(new LLVMContext());
+  }
+  return context.get();
+}
+
+static at::IntArrayRef get_intarray_ref(int64_t *begin, int64_t size) {
+  return {begin, (size_t)size};
 }
 
 static std::string stdstr(const py::object &obj) { return py::str(obj); }
@@ -204,7 +222,72 @@ void dump_operations() {
   }
 }
 
-} // namespace _C
+struct Arg {
+  llvm::Value *val_;
+};
+
+struct ModuleBuilder {
+  std::unordered_map<std::string, llvm::Value *> symbolmap_;
+  llvm::IRBuilder<> builder_;
+
+  std::unique_ptr<llvm::Module> mod_;
+  llvm::Function *fn_;
+
+  ModuleBuilder(const std::string &id, size_t in_tensors, size_t out_tensors)
+      : symbolmap_(), builder_(*get_context()) {
+    auto ctx = get_context();
+
+    // Instantiate LLVM module.
+    mod_.reset(new llvm::Module(id, *ctx));
+
+    // Create the corresponding LLVM function.
+    // 1. Parameter type list: every input is a Tensor, so we only need
+    //    a list of pointers, here.
+    auto param_types =
+        std::vector<llvm::Type *>{in_tensors, get_pointer_type(*ctx)};
+    // 2. Return type: it's either void or a list of tensors (pointer to
+    //    the actual list)
+    auto ret_type = (out_tensors > 0) ? get_pointer_type(*ctx)
+                                      : llvm::Type::getVoidTy(*ctx);
+    // 3. Create the function with the specified function type.
+    fn_ = llvm::Function::Create(
+        llvm::FunctionType::get(ret_type, param_types, false),
+        llvm::GlobalValue::ExternalLinkage, id, *mod_);
+
+    // Move builder to the first basic block of the function.
+    builder_.SetInsertPoint(llvm::BasicBlock::Create(*ctx, "entry", fn_));
+  }
+
+  void add_tensor_placeholder(int i, const std::string &name) {
+    symbolmap_[name] = fn_->getOperand(i);
+  }
+
+  void add_call_function(const std::string &name,
+                         const std::string &aten_qualname, const std::vector<Arg> &args) {
+  }
+
+  void add_statement(const std::string &op, const std::string &name,
+                     const std::string &aten_op_name, py::list args,
+                     py::dict kwargs) {}
+
+  Arg build_int(int64_t n) { return {builder_.getInt64(n)}; }
+
+  Arg build_intarray(const std::vector<int64_t> &v) {
+    auto size = builder_.getInt64(v.size());
+    auto space =
+        builder_.CreateAlloca(llvm::Type::getInt64Ty(*get_context()), size);
+
+    for (size_t i = 0; i < v.size(); i++) {
+      auto addr = builder_.CreateGEP(space, builder_.getInt64(i));
+      builder_.CreateStore(builder_.getInt64(v[i]), addr);
+    }
+
+    auto getfn = mod_->getFunction("get_intarray_ref");
+    return {builder_.CreateCall(getfn, {space, size})};
+  }
+};
+
+} // namespace tdnat
 
 namespace {
 
@@ -219,6 +302,9 @@ PYBIND11_MODULE(_C, m) {
 
   // Dump the operations found in the dispatcher.
   m.def("dump_operations", &tdnat::dump_operations);
+
+  py::class_<tdnat::ModuleBuilder>(m, "Module")
+      .def("add_statement", &tdnat::ModuleBuilder::add_statement);
 }
 
 } // namespace

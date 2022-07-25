@@ -16,10 +16,6 @@
 
 namespace tdnat {
 
-struct Value {
-  template <typename T> Value(T &&t) {}
-};
-
 enum class ArgType {
   List,
   Optional,
@@ -143,18 +139,18 @@ struct ArgTypeChecker {
 
 struct ATenOpArg {
   std::string name_;
-  c10::optional<Value> default_;
+  c10::optional<c10::IValue> default_;
   ArgTypeChecker checker_;
   bool is_kwarg_;
   size_t position_;
 
   ATenOpArg(std::string name, ArgTypeChecker checker, size_t position,
-            c10::optional<Value> def)
+            c10::optional<c10::IValue> def)
       : name_(name), default_(def), checker_(checker), is_kwarg_(false),
         position_(position) {}
 
   ATenOpArg(std::string name, ArgTypeChecker checker,
-            c10::optional<Value> def)
+            c10::optional<c10::IValue> def)
       : name_(name), default_(def), checker_(checker), is_kwarg_(true),
         position_(0) {}
 
