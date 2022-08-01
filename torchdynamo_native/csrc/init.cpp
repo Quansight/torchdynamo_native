@@ -1,37 +1,10 @@
-#include "ATen/core/dispatch/Dispatcher.h"
-#include "ATen/ops/add.h"
-#include "ATen/ops/ones.h"
-#include "ATen/ops/tensor.h"
-#include "c10/core/Device.h"
-#include "c10/core/DeviceType.h"
-#include "c10/core/DispatchKey.h"
-#include "c10/core/TensorOptions.h"
-#include "c10/util/Exception.h"
-#include "pybind11/pybind11.h"
-#include "pybind11/pytypes.h"
-#include "third-party/pytorch/aten/src/ATen/core/ATen_fwd.h"
-#include "llvm/ExecutionEngine/Orc/LLJIT.h"
-#include "llvm/ExecutionEngine/Orc/ThreadSafeModule.h"
-#include "llvm/IR/IRBuilder.h"
-#include "llvm/Support/TargetSelect.h"
+#include <torchdynamo_native/csrc/ops.h>
 
-#include <iostream>
-#include <iterator>
-#include <llvm/IR/BasicBlock.h>
-#include <llvm/IR/DerivedTypes.h>
-#include <llvm/IR/Function.h>
-#include <llvm/IR/GlobalVariable.h>
-#include <llvm/IR/LLVMContext.h>
-#include <llvm/IR/Module.h>
-#include <llvm/IR/Value.h>
-#include <memory>
+#include <llvm/ExecutionEngine/Orc/LLJIT.h>
+#include <llvm/IR/IRBuilder.h>
+#include <llvm/Support/TargetSelect.h>
 
 #include <torch/csrc/utils/pybind.h>
-#include <unordered_map>
-
-void dump_tensor(const at::Tensor &t) { std::cout << t << std::endl; }
-
-at::Tensor one_dim_tensor(int i) { return at::ones({i}); }
 
 namespace {
 
@@ -81,6 +54,7 @@ static std::string stdstr(const py::object &obj) { return py::str(obj); }
 
 namespace tdnat {
 
+/*
 py::cpp_function jit_compile_test() {
   auto c = std::make_unique<LLVMContext>();
   auto m = std::make_unique<Module>("torchdynamo", *c);
@@ -221,6 +195,7 @@ void dump_operations() {
     std::cout << "> " << op.name << "." << op.overload_name << std::endl;
   }
 }
+*/
 
 struct Arg {
   llvm::Value *val_;
@@ -228,13 +203,14 @@ struct Arg {
 
 struct ModuleBuilder {
   std::unordered_map<std::string, llvm::Value *> symbolmap_;
+  std::unordered_map<std::string, Addr> opaddrmap_;
   llvm::IRBuilder<> builder_;
 
   std::unique_ptr<llvm::Module> mod_;
   llvm::Function *fn_;
 
   ModuleBuilder(const std::string &id, size_t in_tensors, size_t out_tensors)
-      : symbolmap_(), builder_(*get_context()) {
+      : symbolmap_(), opaddrmap_(), builder_(*get_context()) {
     auto ctx = get_context();
 
     // Instantiate LLVM module.
@@ -262,8 +238,11 @@ struct ModuleBuilder {
     symbolmap_[name] = fn_->getOperand(i);
   }
 
-  void add_call_function(const std::string &name,
-                         const std::string &aten_qualname, const std::vector<Arg> &args) {
+  void add_call_function(const std::string &symbolname,
+                         const std::string &opname,
+                         const std::vector<Arg> &args) {
+    auto opref = get_aten_op(opname).value();
+    opaddrmap_[opname] = opref.cpufn_;
   }
 
   void add_statement(const std::string &op, const std::string &name,
@@ -295,13 +274,13 @@ PYBIND11_MODULE(_C, m) {
   initialize_llvm_jit_engine();
 
   // Testing a simple JIT example.
-  m.def("jit_test", &tdnat::jit_compile_test);
+  // m.def("jit_test", &tdnat::jit_compile_test);
 
   // Try to parse the FX graph and dump it.
-  m.def("dump_graph", &tdnat::dump_graph);
+  // m.def("dump_graph", &tdnat::dump_graph);
 
   // Dump the operations found in the dispatcher.
-  m.def("dump_operations", &tdnat::dump_operations);
+  // m.def("dump_operations", &tdnat::dump_operations);
 
   py::class_<tdnat::ModuleBuilder>(m, "Module")
       .def("add_statement", &tdnat::ModuleBuilder::add_statement);

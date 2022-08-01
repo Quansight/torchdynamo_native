@@ -1,9 +1,14 @@
 // generated from: ${generator_file}
 
+#include <torchdynamo_native/csrc/ops.h>
+#include <ATen/core/TensorBody.h>
+
 ${aten_ops_include}
 
 namespace tdnat {
 
-${aten_ops_defn}
+ATenOpRegistry GlobalRegistry {
+    ${aten_ops_entry}
+};
 
-}
+} // namespace tdnat

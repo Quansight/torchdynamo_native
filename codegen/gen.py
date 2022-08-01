@@ -1,86 +1,90 @@
+from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import List
-
-from torchgen.model import Argument, Arguments, Type, BaseTy, BaseType, ListType, NativeFunction, OptionalType
-from torchgen.context import with_native_function
+from enum import Enum, auto
+from typing import Dict, Optional, Type, Union
 from torchgen.api import cpp
+from torchgen.api.types import CppSignature, CppSignatureGroup, DispatcherSignature
+
+from torchgen.model import BackendIndex, DispatchKey, NativeFunction, Variant
+from torchgen.context import with_native_function_and_indices
 
 from codegen.utils import get_native_functions_yaml_path, get_tags_yaml_path
 
-def gen_type_list(ty: Type) -> List[str]:
-    if isinstance(ty, ListType):
-        return ["ArgType::List"] + gen_type_list(ty.elem)
-    elif isinstance(ty, OptionalType):
-        return ["ArgType::Optional"] + gen_type_list(ty.elem)
-    else:
-        return [f"ArgType::Base_{ty}"]
+Signature = Union[CppSignature, DispatcherSignature]
 
 @dataclass(frozen=True)
-class Arg:
-    a: Argument
-    position: int
-    is_kwarg: bool
+class Kernel(ABC):
+    f: NativeFunction
 
-    @staticmethod
-    def from_arguments(args: Arguments) -> List["Arg"]:
-        arg_list = []
-        for i, a in enumerate(args.flat_positional):
-            arg_list.append(Arg(a, i, is_kwarg=False))
-        for a in args.flat_kwarg_only:
-            arg_list.append(Arg(a, -1, is_kwarg=True))
-        for a in args.out:
-            arg_list.append(Arg(a, -1, is_kwarg=True))
-        return arg_list
+    @classmethod
+    def from_function_and_indices(cls: Type, f: NativeFunction, indices: Dict[DispatchKey, BackendIndex]) -> "Kernel":
+        for key in cls.DISPATCH_KEY_PRIORITY_LIST:
+            index = indices[key]
+            if index.has_kernel(f) or f.structured_delegate:
+                return DeviceKernel(f, str(key).lower())
+        return DispatchKernel(f)
 
-    def gen(self) -> str:
-        if self.a.default is not None:
-            default_expr = cpp.default_expr(self.a.default, self.a.type)
-            # 'contiguous_format' is translated to 'MemoryFormat::Contiguous'.
-            # We need to insert 'at::' ourselves.
-            if default_expr.startswith("MemoryFormat"):
-                default_expr = f"at::{default_expr}"
-            # Lists with more than 1 element already comes wrapped with '{}'.
-            if not default_expr.startswith("{"):
-                default_expr = f"{{{default_expr}}}"
+    @abstractmethod
+    def namespace(self) -> str: ...
 
-            if self.a.type == BaseType(BaseTy.str):
-                # Special case for strings.
-                default_type = "std::string"
-            else:
-                # Since we are storing it, we need the owning types.
-                default_type = cpp.argumenttype_type(
-                    self.a.type, mutable=False, binds=self.a.name, remove_non_owning_ref_types=True)
-                default_type = default_type.cpp_type(strip_ref=True)
+    @abstractmethod
+    def sig(self) -> Signature: ...
 
-            default = f"{default_type} {default_expr}"
-        else:
-            default = "c10::nullopt"
+    @abstractmethod
+    def incl(self) -> str: ...
 
-        position = f", {self.position}" if not self.is_kwarg else ""
-        types = ", ".join(gen_type_list(self.a.type))
+    @abstractmethod
+    def name(self) -> str: ...
 
-        return f"""{{ "{self.a.name}", {{{types}}}{position}, {default} }}"""
+    DISPATCH_KEY_PRIORITY_LIST = [
+        DispatchKey.CPU,
+        DispatchKey.CompositeExplicitAutograd,
+        DispatchKey.CompositeImplicitAutograd
+    ]
 
+@dataclass(frozen=True)
+class DeviceKernel(Kernel):
+    dev: str
 
-def struct_name(f: NativeFunction) -> str:
-    return f"ATenOp_{f.func.name.unambiguous_name()}"
+    def namespace(self) -> str:
+        return f"at::{self.dev}"
 
-@with_native_function
-def decl(f: NativeFunction) -> str:
-    return f"""
-struct {struct_name(f)} : public ATenOp {{
-  static std::vector<ATenOpArg> arguments_;
-  std::vector<ATenOpArg>& arguments() {{ return arguments_; }}
-}};
-"""
+    def sig(self) -> Signature:
+        return CppSignatureGroup.from_native_function(
+            self.f, method=False, fallback_binding=False
+        ).most_faithful_signature()
 
-@with_native_function
-def defn(f: NativeFunction) -> str:
-    args = [a.gen() for a in Arg.from_arguments(f.func.arguments)]
-    args_prefix_space = ",\n".join(map(lambda l: f"  {l}", args))
+    def incl(self) -> str:
+        return f"{self.f.root_name}_{self.dev}_dispatch"
 
-    return f"""
-std::vector<ATenOpArg> {struct_name(f)}::arguments_ {{
-{args_prefix_space}
-}};
-"""
+    def name(self) -> str:
+        return self.sig().name()
+
+@dataclass(frozen=True)
+class DispatchKernel(Kernel):
+    def namespace(self) -> str:
+        return f"at::_ops::{self.f.func.name.unambiguous_name()}"
+
+    def sig(self) -> Signature:
+        return DispatcherSignature.from_schema(self.f.func)
+
+    def incl(self) -> str:
+        return f"{self.f.root_name}_ops"
+
+    def name(self) -> str:
+        return "call"
+
+@with_native_function_and_indices
+def entry(f: NativeFunction, indices: Dict[DispatchKey, BackendIndex]) -> str:
+    fullname = str(f.func.name)
+    kernel = Kernel.from_function_and_indices(f, indices)
+
+    return "".join([
+        f"MakeRef<{kernel.sig().ptr_type()}, &{kernel.namespace()}::{kernel.name()}>",
+        f"::get(\"{fullname}\")"
+    ])
+
+@with_native_function_and_indices
+def include(f: NativeFunction, indices: Dict[DispatchKey, BackendIndex]) -> Optional[str]:
+    kernel = Kernel.from_function_and_indices(f, indices)
+    return f"#include <ATen/ops/{kernel.incl()}.h>"

@@ -2,68 +2,54 @@ from collections import defaultdict
 import sys
 import os
 
-from typing import Sequence
+from typing import List, Optional, Sequence
 from setuptools import setup
 from setuptools.extension import Extension
 
 from torch.utils.cpp_extension import CppExtension
 from torchgen.gen import parse_native_yaml
 from torchgen.model import NativeFunction
-from torchgen.utils import FileManager
+from torchgen.utils import FileManager, mapMaybe
 
 from codegen import gen
 
 CSRC_DIR = os.path.join("torchdynamo_native", "csrc")
 TEMPLATES_DIR = os.path.join(CSRC_DIR, "templates")
 GENERATED_DIR = os.path.join(CSRC_DIR, "generated")
-OPS_DIR = os.path.join(GENERATED_DIR, "ops")
 
 ATEN_OPS_FILE = os.path.join(CSRC_DIR, "aten_ops.cpp")
 
 def filter_nativefunctions(native_functions: Sequence[NativeFunction]) -> Sequence[NativeFunction]:
+    def predicate(f: NativeFunction) -> bool:
+        return not (
+            f.root_name[0] == "_"
+            or isinstance(f.func.returns, tuple)
+        )
     # Ignore internal functions: those that start with '_'.
-    return list(filter(lambda f: f.root_name[0] != "_", native_functions))
+    return list(filter(predicate, native_functions))
 
 def gen_aten_ops() -> None:
-    native_functions, _ = parse_native_yaml(gen.get_native_functions_yaml_path(), gen.get_tags_yaml_path())
+    native_functions, indices = parse_native_yaml(gen.get_native_functions_yaml_path(), gen.get_tags_yaml_path())
     filtered_nativefunctions = filter_nativefunctions(native_functions)
 
-    ops_fm = FileManager(OPS_DIR, TEMPLATES_DIR, False)
     fm = FileManager(GENERATED_DIR, TEMPLATES_DIR, False)
 
-    # Group NativeFunction by its root name.
-    grouped_nativefunctions = defaultdict(lambda: [])
-    for f in filtered_nativefunctions:
-        grouped_nativefunctions[f.root_name].append(f)
+    def include(f: NativeFunction) -> Optional[str]:
+        return gen.include(f, indices)
 
-    # Generate operator structure declarations.
-    for name, fs in grouped_nativefunctions.items():
-        ops_fm.write_with_template(
-            filename=f"{name}.h",
-            template_fn="aten_ops.h",
-            env_callable=lambda: {
-                "generator_file": __file__,
-                "aten_ops_decl": [gen.decl(f) for f in fs],
-            }
-        )
+    def add_commas(lines: List[str]) -> List[str]:
+        for i in range(len(lines) - 1):
+            lines[i] += ","
+        return lines
 
-    # Generate sharded operator definitions.
-    fm.write_sharded(
+    fm.write(
         filename="aten_ops.cpp",
-        items=grouped_nativefunctions.items(),
-        key_fn=lambda p: p[0],
-        env_callable=lambda p: {
-            "aten_ops_defn": [gen.defn(f) for f in p[1]],
-            "aten_ops_include": [f"""#include \"{os.path.join(OPS_DIR, f"{p[0]}.h")}\""""],
-        },
-        base_env={
+        env_callable=lambda: {
             "generator_file": __file__,
+            "aten_ops_entry": add_commas([gen.entry(f, indices) for f in filtered_nativefunctions]),
+            "aten_ops_include": sorted(list(set(
+                mapMaybe(include, filtered_nativefunctions)))),
         },
-        num_shards=5,
-        sharded_keys={
-            "aten_ops_defn",
-            "aten_ops_include",
-        }
     )
 
 def get_system_root() -> str:
@@ -79,6 +65,7 @@ def get_extension() -> Extension:
 
     sources = []
     sources.append(os.path.join(CSRC_DIR, "init.cpp"))
+    sources.append(os.path.join(CSRC_DIR, "ops.cpp"))
 
     for f in os.listdir(GENERATED_DIR):
         path = os.path.join(GENERATED_DIR, f)
