@@ -21,6 +21,7 @@ from helper.codegen import gen
 # ================================================================================
 PROJECT = "tdnat"
 
+SCRIPT_DIR = os.path.realpath(os.path.dirname(sys.argv[0]))
 BUILD_DIR = os.path.join(SCRIPT_DIR, "build")
 CSRC_DIR = os.path.join(SCRIPT_DIR, "torchdynamo_native", "csrc")
 GENERATED_DIR = os.path.join(CSRC_DIR, "generated")
