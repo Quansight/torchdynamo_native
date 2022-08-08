@@ -5,7 +5,7 @@ from torchgen.model import Argument, Arguments, Type, BaseTy, BaseType, ListType
 from torchgen.context import with_native_function
 from torchgen.api import cpp
 
-from codegen.utils import get_native_functions_yaml_path, get_tags_yaml_path
+from helper.codegen.utils import get_native_functions_yaml_path, get_tags_yaml_path
 
 def gen_type_list(ty: Type) -> List[str]:
     if isinstance(ty, ListType):

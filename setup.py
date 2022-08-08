@@ -1,26 +1,57 @@
-from collections import defaultdict
+import shutil
 import sys
 import os
 
-from typing import Sequence
-from setuptools import setup
+from typing import List, Optional, Sequence
+from setuptools import setup, Command
 from setuptools.extension import Extension
+from setuptools.command.build_ext import build_ext
 
 from torch.utils.cpp_extension import CppExtension
 from torchgen.gen import parse_native_yaml
-from torchgen.model import NativeFunction
-from torchgen.utils import FileManager
+from torchgen.model import NativeFunction, BaseType, BaseTy, ListType
+from torchgen.utils import FileManager, mapMaybe
 
-from codegen import gen
+from helper.build.cmake import CMake
+from helper.build.setupext import build_ext, clean, CMakeExtension, wrap_with_cmake_instance
+from helper.codegen import gen
 
-CSRC_DIR = os.path.join("torchdynamo_native", "csrc")
-TEMPLATES_DIR = os.path.join(CSRC_DIR, "templates")
+# ================================================================================
+# Static Variables ===============================================================
+# ================================================================================
+PROJECT = "tdnat"
+
+BUILD_DIR = os.path.join(SCRIPT_DIR, "build")
+CSRC_DIR = os.path.join(SCRIPT_DIR, "torchdynamo_native", "csrc")
 GENERATED_DIR = os.path.join(CSRC_DIR, "generated")
 OPS_DIR = os.path.join(GENERATED_DIR, "ops")
+PYTORCH_LIBS_DIR = os.path.join(SCRIPT_DIR, "third-party", "pytorch", "torch", "lib")
+SCRIPT_DIR = os.path.realpath(os.path.dirname(sys.argv[0]))
+TEMPLATES_DIR = os.path.join(CSRC_DIR, "templates")
 
 ATEN_OPS_FILE = os.path.join(CSRC_DIR, "aten_ops.cpp")
 
+TYPE_BLOCKLIST = [
+    BaseType(BaseTy.Dimname),
+    BaseType(BaseTy.Dimname),
+    BaseType(BaseTy.DimVector),
+    BaseType(BaseTy.QScheme),
+    BaseType(BaseTy.SymInt),
+    ListType(BaseType(BaseTy.SymInt), None),
+]
+
+# ================================================================================
+# Code Generation Entry-Point ====================================================
+# ================================================================================
+
 def filter_nativefunctions(native_functions: Sequence[NativeFunction]) -> Sequence[NativeFunction]:
+    def predicate(f: NativeFunction) -> bool:
+        return not (
+            f.root_name[0] == "_"
+            or (isinstance(f.func.returns, tuple) and len(f.func.returns) > 1)
+            or any(r.type in TYPE_BLOCKLIST for r in f.func.returns)
+            or any(a.type in TYPE_BLOCKLIST for a in f.func.arguments.flat_all)
+        )
     # Ignore internal functions: those that start with '_'.
     return list(filter(lambda f: f.root_name[0] != "_", native_functions))
 
@@ -66,6 +97,12 @@ def gen_aten_ops() -> None:
         }
     )
 
+# Actually call the code generation.
+gen_aten_ops()
+
+# ================================================================================
+# Build Process Setup ============================================================
+# ================================================================================
 def get_system_root() -> str:
     return os.path.dirname(os.path.dirname(sys.executable))
 
@@ -100,9 +137,22 @@ def get_extension() -> Extension:
         ]
     )
 
-# First, generate 'aten_ops.cpp' file.
-gen_aten_ops()
-# Then, install the package.
+# ================================================================================
+# Setting up CMake build directory ===============================================
+# ================================================================================
+
+if not os.path.isdir(BUILD_DIR):
+    os.makedirs(BUILD_DIR, exist_ok=True)
+
+cmake = CMake(BUILD_DIR)
+cmake.run(SCRIPT_DIR, [
+    f"--install-prefix={BUILD_DIR}/{PROJECT}",
+    f"-DPYTORCH_LIBS_PATH={PYTORCH_LIBS_DIR}"
+])
+
+# ================================================================================
+# Setuptools Setup ===============================================================
+# ================================================================================
 setup(
     name="torchdynamo_native",
     version="0.0.1",
@@ -114,6 +164,11 @@ setup(
         "pybind11",
     ],
     ext_modules=[
+        CMakeExtension(),
         get_extension()
-    ]
+    ],
+    cmdclass={
+        "clean": wrap_with_cmake_instance(clean, cmake),
+        "build_ext": wrap_with_cmake_instance(build_ext, cmake)
+    }
 )
