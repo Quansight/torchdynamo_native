@@ -1,0 +1,16 @@
+If:
+  PathMatch:
+    - include/.*
+    - lib/.*
+
+CompileFlags:
+  CompilationDatabase: build/
+
+---
+
+If:
+  PathMatch:
+    - torchdynamo_native/csrc/.*
+
+CompileFlags:
+  CompilationDatabase: ./

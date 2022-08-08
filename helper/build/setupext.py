@@ -20,7 +20,7 @@ class build_ext(setup_build_ext):
     def run(self) -> None:
         fallback_extensions = [ext for ext in self.extensions if not is_cmake_extension(ext)]
 
-        if any(is_cmake_extension(ext) for ext in self.extensions):
+        if len(fallback_extensions) != len(self.extensions):  # type: ignore
             try:
                 self.cmake().build()
                 self.cmake().install()
