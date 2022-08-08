@@ -1,0 +1,6 @@
+__pycache__/
+*.egg-info/
+/build/
+.cache/
+compile_commands.json
+generated/
