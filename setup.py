@@ -1,6 +1,8 @@
 import shutil
 import sys
+import sysconfig
 import os
+import json
 
 from typing import List, Optional, Sequence
 from setuptools import setup, Command
@@ -111,6 +113,7 @@ def get_extension() -> Extension:
     include_dirs = []
     include_dirs.append(os.path.join(get_system_root(), "include"))
     include_dirs.append(os.path.dirname(os.path.realpath(__file__)))
+    include_dirs.append(sysconfig.get_path("include"))
 
     library_dirs = []
     library_dirs.append(os.path.join(get_system_root(), "lib"))
@@ -138,6 +141,32 @@ def get_extension() -> Extension:
         ]
     )
 
+def generate_compile_commands(ext: Extension) -> None:
+    compiler = sysconfig.get_config_var("CXX")
+    include_dirs_args = [f"-I{directory}" for directory in ext.include_dirs]
+    library_dirs_args = [f"-L{directory}" for directory in ext.library_dirs]
+    library_args = [f"-l{lib}" for lib in ext.libraries]
+
+    obj = []
+    for s in ext.sources:
+        obj.append({
+            "directory": ROOT_DIR,
+            "command": " ".join([
+                compiler,
+                *include_dirs_args,
+                *library_dirs_args,
+                *library_args,
+                *ext.extra_compile_args
+            ]),
+            "file": s,
+        })
+
+    with open(os.path.join(ROOT_DIR, "compile_commands.json"), "w") as f:
+        json.dump(obj, f, indent=4, sort_keys=True)
+
+cpp_extension = get_extension()
+generate_compile_commands(cpp_extension)
+
 # ================================================================================
 # Setting up CMake build directory ===============================================
 # ================================================================================
@@ -149,6 +178,7 @@ cmake = CMake(BUILD_DIR)
 cmake.run(SCRIPT_DIR, [
     f"--install-prefix={BUILD_DIR}/{PROJECT}",
     f"-DPYTORCH_LIBS_PATH={PYTORCH_LIBS_DIR}"
+    f"-DCMAKE_EXPORT_COMPILE_COMMANDS=ON",
 ])
 
 # ================================================================================
@@ -166,7 +196,7 @@ setup(
     ],
     ext_modules=[
         CMakeExtension(),
-        get_extension()
+        cpp_extension,
     ],
     cmdclass={
         "clean": wrap_with_cmake_instance(clean, cmake),
