@@ -177,7 +177,8 @@ if not os.path.isdir(BUILD_DIR):
 cmake = CMake(BUILD_DIR)
 cmake.run(SCRIPT_DIR, [
     f"--install-prefix={BUILD_DIR}/{PROJECT}",
-    f"-DPYTORCH_LIBS_PATH={PYTORCH_LIBS_DIR}"
+    f"-DTORCH_DIR={TORCH_DIR}",
+    f"-DENABLE_TESTS=ON",
     f"-DCMAKE_EXPORT_COMPILE_COMMANDS=ON",
 ])
 
