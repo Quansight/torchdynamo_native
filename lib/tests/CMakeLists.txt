@@ -12,4 +12,5 @@ function(add_tdnat_test NAME)
 endfunction()
 
 add_tdnat_test(link_test)
+add_tdnat_test(identity_jit_test)
 add_tdnat_test(tollvmtype_test)
