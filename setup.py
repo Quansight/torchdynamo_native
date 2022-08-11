@@ -1,8 +1,8 @@
-import shutil
 import sys
 import sysconfig
 import os
 import json
+import warnings
 
 from typing import List, Optional, Sequence
 from setuptools import setup, Command
@@ -10,7 +10,7 @@ from setuptools.extension import Extension
 
 from torch.utils.cpp_extension import CppExtension
 from torchgen.gen import parse_native_yaml
-from torchgen.model import NativeFunction, BaseType, BaseTy, ListType
+from torchgen.model import NativeFunction, BaseType, BaseTy, ListType, OptionalType, Type
 from torchgen.utils import FileManager, mapMaybe
 
 from helper.build.cmake import CMake
@@ -33,12 +33,13 @@ CSRC_DIR = os.path.join(ROOT_DIR, "torchdynamo_native", "csrc")
 BUILD_DIR = os.path.join(ROOT_DIR, "build")
 TORCH_DIR = os.path.join(ROOT_DIR, "third-party", "pytorch", "torch")
 LIB_DIR = os.path.join(ROOT_DIR, "lib")
+INCLUDE_DIR = os.path.join(ROOT_DIR, "include")
 
 GENERATED_DIR = os.path.join(LIB_DIR, "generated")
 TEMPLATES_DIR = os.path.join(LIB_DIR, "templates")
+LINK_DIR = os.path.join(BUILD_DIR, "tdnat", "lib")
 
 TYPE_BLOCKLIST = [
-    BaseType(BaseTy.Dimname),
     BaseType(BaseTy.Dimname),
     BaseType(BaseTy.DimVector),
     BaseType(BaseTy.QScheme),
@@ -52,13 +53,20 @@ SHARDS = 5
 # Code Generation Entry-Point ====================================================
 # ================================================================================
 
+def contains_blocklist_type(t: Type) -> bool:
+    if isinstance(t, BaseType):
+        return t in TYPE_BLOCKLIST
+    if isinstance(t, OptionalType) or isinstance(t, ListType):
+        return contains_blocklist_type(t.elem)
+    assert False, f"unknown type: {t}"
+
 def filter_nativefunctions(native_functions: Sequence[NativeFunction]) -> Sequence[NativeFunction]:
     def predicate(f: NativeFunction) -> bool:
         return not (
             f.root_name[0] == "_"
             or (isinstance(f.func.returns, tuple) and len(f.func.returns) > 1)
-            or any(r.type in TYPE_BLOCKLIST for r in f.func.returns)
-            or any(a.type in TYPE_BLOCKLIST for a in f.func.arguments.flat_all)
+            or any(contains_blocklist_type(r.type) for r in f.func.returns)
+            or any(contains_blocklist_type(a.type) for a in f.func.arguments.flat_all)
         )
     # Ignore internal functions: those that start with '_'.
     return list(filter(predicate, native_functions))
@@ -111,12 +119,20 @@ def get_system_root() -> str:
 
 def get_extension() -> Extension:
     include_dirs = []
-    include_dirs.append(os.path.join(get_system_root(), "include"))
-    include_dirs.append(os.path.dirname(os.path.realpath(__file__)))
+
+    # torchdynamo_native include directory
+    include_dirs.append(INCLUDE_DIR)
+    # Python include directory
     include_dirs.append(sysconfig.get_path("include"))
+    # System include directory (one level below Python's)
+    include_dirs.append(os.path.dirname(sysconfig.get_path("include")))
 
     library_dirs = []
+
+    # System library directory (sibling directory of /bin/python -- executable)
     library_dirs.append(os.path.join(get_system_root(), "lib"))
+    # Compiled torchdynamo_native install path.
+    library_dirs.append(LINK_DIR)
 
     sources = []
     sources.append(os.path.join(CSRC_DIR, "init.cpp"))
@@ -127,12 +143,15 @@ def get_extension() -> Extension:
         include_dirs=include_dirs,
         library_dirs=library_dirs,
         libraries=[
-            "LLVM"
+            "tdnat"
         ],
         extra_compile_args=[
             "-std=c++14",
             "-DSTRIP_ERROR_MESSAGES=1",
-            "-fvisibility=hidden"
+            "-fvisibility=hidden",
+        ],
+        extra_link_args=[
+            f"-Wl,-rpath,{LINK_DIR}"
         ]
     )
 
@@ -141,6 +160,10 @@ def generate_compile_commands(ext: Extension) -> None:
     include_dirs_args = [f"-I{directory}" for directory in ext.include_dirs]
     library_dirs_args = [f"-L{directory}" for directory in ext.library_dirs]
     library_args = [f"-l{lib}" for lib in ext.libraries]
+
+    if not isinstance(compiler, str):
+        warnings.warn("set your CXX environment variable for generating compile_commands.json")
+        return
 
     obj = []
     for s in ext.sources:
