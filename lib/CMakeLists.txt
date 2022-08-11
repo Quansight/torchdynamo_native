@@ -1,5 +1,12 @@
-add_library(MyMain SHARED main.cpp)
+file(GLOB generated_cpp_files
+  LIST_DIRECTORIES false CONFIGURE_DEPENDS
+  "generated/*.cpp")
+list(FILTER generated_cpp_files
+  EXCLUDE REGEX ".*Everything\.cpp")
 
+add_library(tdnat SHARED
+  main.cpp
+  ${generated_cpp_files})
 
 target_link_directories(tdnat PUBLIC
   "${TORCH_DIR}/lib")

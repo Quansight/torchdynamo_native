@@ -16,23 +16,22 @@ from torchgen.utils import FileManager, mapMaybe
 
 from helper.build.cmake import CMake
 from helper.build.setupext import build_ext, clean, CMakeExtension, wrap_with_cmake_instance
-from helper.codegen import gen
+from helper.codegen import regfn, glregfn, utils
 
 # ================================================================================
 # Static Variables ===============================================================
 # ================================================================================
 PROJECT = "tdnat"
 
-SCRIPT_DIR = os.path.realpath(os.path.dirname(sys.argv[0]))
-BUILD_DIR = os.path.join(SCRIPT_DIR, "build")
-CSRC_DIR = os.path.join(SCRIPT_DIR, "torchdynamo_native", "csrc")
-GENERATED_DIR = os.path.join(CSRC_DIR, "generated")
-OPS_DIR = os.path.join(GENERATED_DIR, "ops")
-PYTORCH_LIBS_DIR = os.path.join(SCRIPT_DIR, "third-party", "pytorch", "torch", "lib")
-SCRIPT_DIR = os.path.realpath(os.path.dirname(sys.argv[0]))
-TEMPLATES_DIR = os.path.join(CSRC_DIR, "templates")
+ROOT_DIR = os.path.realpath(os.path.dirname(sys.argv[0]))
 
-ATEN_OPS_FILE = os.path.join(CSRC_DIR, "aten_ops.cpp")
+CSRC_DIR = os.path.join(ROOT_DIR, "torchdynamo_native", "csrc")
+BUILD_DIR = os.path.join(ROOT_DIR, "build")
+TORCH_DIR = os.path.join(ROOT_DIR, "third-party", "pytorch", "torch")
+LIB_DIR = os.path.join(ROOT_DIR, "lib")
+
+GENERATED_DIR = os.path.join(LIB_DIR, "generated")
+TEMPLATES_DIR = os.path.join(LIB_DIR, "templates")
 
 TYPE_BLOCKLIST = [
     BaseType(BaseTy.Dimname),
@@ -42,6 +41,8 @@ TYPE_BLOCKLIST = [
     BaseType(BaseTy.SymInt),
     ListType(BaseType(BaseTy.SymInt), None),
 ]
+
+SHARDS = 5
 
 # ================================================================================
 # Code Generation Entry-Point ====================================================
@@ -56,47 +57,42 @@ def filter_nativefunctions(native_functions: Sequence[NativeFunction]) -> Sequen
             or any(a.type in TYPE_BLOCKLIST for a in f.func.arguments.flat_all)
         )
     # Ignore internal functions: those that start with '_'.
-    return list(filter(lambda f: f.root_name[0] != "_", native_functions))
+    return list(filter(predicate, native_functions))
 
 def gen_aten_ops() -> None:
-    native_functions, _ = parse_native_yaml(gen.get_native_functions_yaml_path(), gen.get_tags_yaml_path())
+    native_functions, indices = parse_native_yaml(utils.get_native_functions_yaml_path(), utils.get_tags_yaml_path())
     filtered_nativefunctions = filter_nativefunctions(native_functions)
 
-    ops_fm = FileManager(OPS_DIR, TEMPLATES_DIR, False)
     fm = FileManager(GENERATED_DIR, TEMPLATES_DIR, False)
 
-    # Group NativeFunction by its root name.
-    grouped_nativefunctions = defaultdict(lambda: [])
-    for f in filtered_nativefunctions:
-        grouped_nativefunctions[f.root_name].append(f)
-
-    # Generate operator structure declarations.
-    for name, fs in grouped_nativefunctions.items():
-        ops_fm.write_with_template(
-            filename=f"{name}.h",
-            template_fn="aten_ops.h",
-            env_callable=lambda: {
-                "generator_file": __file__,
-                "aten_ops_decl": [gen.decl(f) for f in fs],
-            }
-        )
-
-    # Generate sharded operator definitions.
     fm.write_sharded(
-        filename="aten_ops.cpp",
-        items=grouped_nativefunctions.items(),
-        key_fn=lambda p: p[0],
-        env_callable=lambda p: {
-            "aten_ops_defn": [gen.defn(f) for f in p[1]],
-            "aten_ops_include": [f"""#include \"{os.path.join(OPS_DIR, f"{p[0]}.h")}\""""],
+        filename="register_function.cpp",
+        items=filtered_nativefunctions,
+        key_fn=lambda fn: fn.root_name,
+        env_callable=lambda fn: {
+            "ops_include": [regfn.include(fn, indices)],
+            "ops_entry": [regfn.insert_entry(fn, indices)],
         },
+        num_shards=SHARDS,
         base_env={
             "generator_file": __file__,
+            "register_function_prefix": regfn.prefix(),
+            "register_function_parameters": regfn.parameters()
         },
-        num_shards=5,
         sharded_keys={
-            "aten_ops_defn",
-            "aten_ops_include",
+            "ops_include",
+            "ops_entry"
+        }
+    )
+
+    fm.write(
+        filename="global_register_function.cpp",
+        env_callable=lambda: {
+            "generator_file": __file__,
+            "register_functions_decl": [glregfn.decl(i) for i in range(SHARDS)],
+            "register_functions_call": [glregfn.call(i) for i in range(SHARDS)],
+            "register_function_prefix": regfn.prefix(),
+            "register_function_parameters": regfn.parameters(),
         }
     )
 
@@ -120,11 +116,6 @@ def get_extension() -> Extension:
 
     sources = []
     sources.append(os.path.join(CSRC_DIR, "init.cpp"))
-
-    for f in os.listdir(GENERATED_DIR):
-        path = os.path.join(GENERATED_DIR, f)
-        if not f.endswith("Everything.cpp") and not os.path.isdir(path):
-            sources.append(path)
 
     return CppExtension(
         name="torchdynamo_native._C",
@@ -175,7 +166,7 @@ if not os.path.isdir(BUILD_DIR):
     os.makedirs(BUILD_DIR, exist_ok=True)
 
 cmake = CMake(BUILD_DIR)
-cmake.run(SCRIPT_DIR, [
+cmake.run(ROOT_DIR, [
     f"--install-prefix={BUILD_DIR}/{PROJECT}",
     f"-DTORCH_DIR={TORCH_DIR}",
     f"-DENABLE_TESTS=ON",
