@@ -6,6 +6,7 @@ list(FILTER generated_cpp_files
 
 add_library(tdnat SHARED
   main.cpp
+  ops.cpp
   ${generated_cpp_files})
 
 target_link_directories(tdnat PUBLIC

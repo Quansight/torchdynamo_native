@@ -14,6 +14,7 @@
 #include <type_traits>
 
 #include <tdnat/llvm.h>
+#include <tdnat/ops.h>
 
 #include "types.h"
 
@@ -29,12 +30,7 @@ template <typename T> static T identity(T t) { return t; }
 class Environment : public ::testing::Environment {
 public:
   ~Environment() override {}
-
-  void SetUp() override {
-    llvm::InitializeNativeTarget();
-    llvm::InitializeNativeTargetAsmParser();
-    llvm::InitializeNativeTargetAsmPrinter();
-  }
+  void SetUp() override { initialize_llvm(); }
 };
 
 const auto *env = ::testing::AddGlobalTestEnvironment(new Environment());

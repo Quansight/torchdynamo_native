@@ -39,7 +39,14 @@ using ATenOpRegistryEntry = std::pair<std::string, ATenOpRef>;
 // This API hides the actual registry implementation.
 c10::optional<ATenOpRef> get_aten_op(const std::string &opname);
 
-// Registers all ATen operations.
-void global_register_aten_operations(ATenOpRegistry& registry);
+// Initialize a registry with PyTorch operations.
+void initialize_registry(ATenOpRegistry& registry);
+
+// Initialize the necessary LLVM components.
+void initialize_llvm();
+
+// Initialize tdnat library.
+void initialize(ATenOpRegistry& registry);
+void initialize();
 
 } // namespace tdnat
