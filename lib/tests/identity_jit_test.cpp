@@ -1,5 +1,8 @@
 #include <gtest/gtest.h>
 
+#include <tdnat/llvm_function_type.h>
+#include <tdnat/ops.h>
+
 #include <llvm/ExecutionEngine/Orc/LLJIT.h>
 #include <llvm/IR/IRBuilder.h>
 #include <llvm/Support/TargetSelect.h>
@@ -13,10 +16,9 @@
 #include <memory>
 #include <type_traits>
 
-#include <tdnat/llvm.h>
-#include <tdnat/ops.h>
-
-#include "types.h"
+#include "tdnat/utils.h"
+#include "test_utils.h"
+#include "llvm/Support/raw_ostream.h"
 
 using namespace tdnat;
 
@@ -26,6 +28,10 @@ static const char *IdentityFn = "identity_function";
 static const char *EntryBlock = "entry";
 
 template <typename T> static T identity(T t) { return t; }
+template <> at::Scalar identity<at::Scalar>(at::Scalar s) {
+  std::cout << s << std::endl;
+  return s;
+}
 
 class Environment : public ::testing::Environment {
 public:
@@ -35,9 +41,19 @@ public:
 
 const auto *env = ::testing::AddGlobalTestEnvironment(new Environment());
 
-template <typename T> struct BuildLLVMFunction {};
+template <typename T, typename _Tp = void> struct BuildLLVMFunction {
+  static void call(llvm::Function &fn, llvm::Function &idfn) {
+    auto arg = fn.getArg(0);
 
-template <typename... Args> struct BuildLLVMFunction<void (*)(Args...)> {
+    auto bb = llvm::BasicBlock::Create(fn.getContext(), EntryBlock, &fn);
+    llvm::IRBuilder<> builder(bb);
+
+    auto ret = builder.CreateCall(&idfn, {arg});
+    builder.CreateRet(ret);
+  }
+};
+
+template <typename T> struct BuildLLVMFunction<T, std::enable_if_t<ReturnsOnMemory<T>::value>> {
   static void call(llvm::Function &fn, llvm::Function &idfn) {
     auto arg0 = fn.getArg(0);
     auto arg1 = fn.getArg(1);
@@ -47,19 +63,6 @@ template <typename... Args> struct BuildLLVMFunction<void (*)(Args...)> {
 
     builder.CreateCall(&idfn, {arg0, arg1});
     builder.CreateRetVoid();
-  }
-};
-
-template <typename Return, typename... Args>
-struct BuildLLVMFunction<Return (*)(Args...)> {
-  static void call(llvm::Function &fn, llvm::Function &idfn) {
-    auto arg = fn.getArg(0);
-
-    auto bb = llvm::BasicBlock::Create(fn.getContext(), EntryBlock, &fn);
-    llvm::IRBuilder<> builder(bb);
-
-    auto ret = builder.CreateCall(&idfn, {arg});
-    builder.CreateRet(ret);
   }
 };
 
@@ -83,30 +86,9 @@ template <typename T> struct InstancesTrait<c10::optional<T>> {
   }
 };
 
-#define IMPL_INSTANCE(TYPE, ...)                                               \
-  template <> struct InstancesTrait<TYPE> {                                    \
-    static std::vector<typename ReturnType<TYPE>::type> instances() {          \
-      return {__VA_ARGS__};                                                    \
-    }                                                                          \
-  };
-IMPL_INSTANCE(int64_t, 42);
-IMPL_INSTANCE(double, 3.14159);
-IMPL_INSTANCE(at::IntArrayRef, std::vector<long>(20, 0),
-              std::vector<long>({1, 2, 3, 4}));
-IMPL_INSTANCE(at::Tensor, at::tensor({42}), at::ones({3, 3}),
-              at::diag(at::rand({4})));
-#undef IMPL_INSTANCE
-
 template <typename T, typename _Tp = void> struct EqualTrait {};
 
-template <typename T>
-struct EqualTrait<T, std::enable_if_t<!IsInvisibleReturnType<T>::value>> {
-  static bool equal(const T &t1, const T &t2) { return t1 == t2; }
-};
-
-template <typename T>
-struct EqualTrait<c10::optional<T>,
-                  std::enable_if_t<IsInvisibleReturnType<T>::value>> {
+template <typename T> struct EqualTrait<c10::optional<T>> {
   static bool equal(const c10::optional<T> &t1, const c10::optional<T> &t2) {
     if (t1.has_value() != t2.has_value()) {
       return false;
@@ -118,12 +100,84 @@ struct EqualTrait<c10::optional<T>,
   }
 };
 
+#define IMPL_INSTANCE(TYPE, ...)                                               \
+  template <> struct InstancesTrait<TYPE> {                                    \
+    static std::vector<typename ReturnType<TYPE>::type> instances() {          \
+      return {__VA_ARGS__};                                                    \
+    }                                                                          \
+  };
+
 #define IMPL_EQUAL(TYPE, RET)                                                  \
   template <> struct EqualTrait<TYPE> {                                        \
     static bool equal(const TYPE &t1, const TYPE &t2) { return RET; }          \
   };
+
+#define IMPL_EQUAL_OPERATOR(TYPE)                                              \
+  template <> struct EqualTrait<TYPE> {                                        \
+    static bool equal(const TYPE &t1, const TYPE &t2) { return t1 == t2; }     \
+  };
+
+IMPL_INSTANCE(bool, true, false);
+IMPL_EQUAL_OPERATOR(bool)
+
+IMPL_INSTANCE(int64_t, 42);
+IMPL_EQUAL_OPERATOR(int64_t)
+
+IMPL_INSTANCE(double, 3.14159);
+IMPL_EQUAL_OPERATOR(double)
+
+IMPL_INSTANCE(at::ArrayRef<int64_t>, std::vector<int64_t>(20, 0),
+              std::vector<int64_t>({1, 2, 3, 4}));
+IMPL_EQUAL_OPERATOR(at::ArrayRef<int64_t>)
+
+IMPL_INSTANCE(at::Tensor, at::tensor({42}), at::ones({3, 3}),
+              at::diag(at::rand({4})));
 IMPL_EQUAL(at::Tensor, t1.equal(t2));
+
+IMPL_INSTANCE(at::Scalar, at::Scalar(42), at::Scalar(3.14));
+template <> struct EqualTrait<at::Scalar> {
+  static bool equal(const at::Scalar &t1, const at::Scalar &t2) {
+    if (t1.type() != t2.type()) {
+      return false;
+    }
+
+    if (t1.isComplex()) {
+      return t1.toComplexDouble() == t2.toComplexDouble();
+    } else if (t1.isFloatingPoint()) {
+      return t1.toDouble() == t2.toDouble();
+    } else if (t1.isIntegral(/*includeBool=*/false)) {
+      return t1.toInt() == t2.toInt();
+    } else if (t1.isBoolean()) {
+      return t1.toBool() == t2.toBool();
+    } else {
+      return false;
+    }
+  }
+};
+
+IMPL_INSTANCE(std::vector<at::Tensor>, {}, {at::tensor({42})},
+              {at::ones({3, 3}), at::tensor({42}), at::Tensor()});
+template <> struct EqualTrait<std::vector<at::Tensor>> {
+  static bool equal(const std::vector<at::Tensor> &t1,
+                    const std::vector<at::Tensor> &t2) {
+    if (t1.size() != t2.size()) {
+      return false;
+    }
+
+    for (size_t i = 0; i < t1.size(); i++) {
+      if (t1[i].defined() != t2[i].defined()) {
+        return false;
+      }
+      if (t1[i].defined() && !EqualTrait<at::Tensor>::equal(t1[i], t2[i])) {
+        return false;
+      }
+    }
+    return true;
+  }
+};
+#undef IMPL_INSTANCE
 #undef IMPL_EQUAL
+#undef IMPL_EQUAL_OPERATOR
 
 template <typename T> std::vector<typename ReturnType<T>::type> instances() {
   return InstancesTrait<T>::instances();
@@ -135,7 +189,7 @@ template <typename T> T equal(const T &t1, const T &t2) {
 
 template <typename T> class JITTest : public testing::Test {
 public:
-  using FnTypePtr = typename ABITrait<T (*)(T)>::type;
+  using FnTypePtr = T (*)(T);
 
   JITTest() : jit_(llvm::cantFail(llvm::orc::LLJITBuilder().create())) {}
 
@@ -144,20 +198,24 @@ public:
     auto mod = std::make_unique<llvm::Module>(ModuleName, *ctx);
 
     auto entry_fn = llvm::Function::Create(
-        ToLLVMFunctionType<FnTypePtr>::call(*ctx),
+        ABILLVMFunctionType<FnTypePtr>::get(*ctx),
         llvm::Function::ExternalLinkage, EntryFn, mod.get());
 
     auto identity_fn = llvm::Function::Create(
-        ToLLVMFunctionType<FnTypePtr>::call(*ctx),
+        ABILLVMFunctionType<FnTypePtr>::get(*ctx),
         llvm::Function::ExternalLinkage, IdentityFn, mod.get());
 
-    BuildLLVMFunction<FnTypePtr>::call(*entry_fn, *identity_fn);
+    BuildLLVMFunction<typename ABISignature<FnTypePtr>::type>::call(
+        *entry_fn, *identity_fn);
 
     llvm::cantFail(jit_->addIRModule({std::move(mod), std::move(ctx)}));
 
     llvm::cantFail(jit_->define(llvm::orc::absoluteSymbols(
         {{jit_->mangleAndIntern(IdentityFn),
           llvm::JITEvaluatedSymbol::fromPointer(&identity<T>)}})));
+
+    entry_fn->print(llvm::outs());
+    identity_fn->print(llvm::outs());
   }
 
 protected:
@@ -169,7 +227,7 @@ TYPED_TEST(JITTest, IdentityTest) {
   auto symbol = llvm::cantFail(this->jit_->lookup(EntryFn));
   auto func = (TypeParam(*)(TypeParam))symbol.getAddress();
 
-  for (auto &arg : instances<TypeParam>()) {
+  for (auto arg : instances<TypeParam>()) {
     auto result = func(arg);
     ASSERT_TRUE(EqualTrait<TypeParam>::equal(arg, result));
   }

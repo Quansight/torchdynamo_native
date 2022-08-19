@@ -13,23 +13,30 @@ namespace tdnat {
 
 using Addr = uint64_t;
 
-struct ATenOpRef {
+struct ATenOpRefVTable {
   using LLVMFunctionTypeFn = llvm::FunctionType *(*)(llvm::LLVMContext &);
-
-  const char *opname_;
-  Addr cpufn_;
   LLVMFunctionTypeFn llvm_function_type_fn_;
+};
 
+class ATenOpRef {
+public:
   ATenOpRef() {}
 
-  ATenOpRef(const char *opname, Addr cpufn,
-            LLVMFunctionTypeFn llvm_function_type_fn)
-      : opname_(opname), cpufn_(cpufn),
-        llvm_function_type_fn_(llvm_function_type_fn) {}
+  ATenOpRef(const char *opname, Addr cpufn, ATenOpRefVTable vtable)
+      : opname_(opname), cpufn_(cpufn), vtable_(vtable) {}
+
+  std::string name() { return std::string("__jit_") + opname_; }
+
+  Addr cpu() { return cpufn_; }
 
   llvm::FunctionType *llvm_function_type(llvm::LLVMContext &context) {
-    return (*llvm_function_type_fn_)(context);
+    return (*vtable_.llvm_function_type_fn_)(context);
   }
+
+private:
+  const char *opname_;
+  Addr cpufn_;
+  ATenOpRefVTable vtable_;
 };
 
 using ATenOpRegistry = std::unordered_map<std::string, ATenOpRef>;
@@ -40,13 +47,13 @@ using ATenOpRegistryEntry = std::pair<std::string, ATenOpRef>;
 c10::optional<ATenOpRef> get_aten_op(const std::string &opname);
 
 // Initialize a registry with PyTorch operations.
-void initialize_registry(ATenOpRegistry& registry);
+void initialize_registry(ATenOpRegistry &registry);
 
 // Initialize the necessary LLVM components.
 void initialize_llvm();
 
 // Initialize tdnat library.
-void initialize(ATenOpRegistry& registry);
+void initialize(ATenOpRegistry &registry);
 void initialize();
 
 } // namespace tdnat

@@ -29,6 +29,7 @@ CSRC_DIR = os.path.join(ROOT_DIR, "torchdynamo_native", "csrc")
 BUILD_DIR = os.path.join(ROOT_DIR, "build")
 TORCH_DIR = os.path.join(ROOT_DIR, "third-party", "pytorch", "torch")
 LIB_DIR = os.path.join(ROOT_DIR, "lib")
+INCLUDE_DIR = os.path.join(ROOT_DIR, "include")
 
 GENERATED_DIR = os.path.join(LIB_DIR, "generated")
 TEMPLATES_DIR = os.path.join(LIB_DIR, "templates")
@@ -107,8 +108,7 @@ def get_system_root() -> str:
 
 def get_extension() -> Extension:
     include_dirs = []
-    include_dirs.append(os.path.join(get_system_root(), "include"))
-    include_dirs.append(os.path.dirname(os.path.realpath(__file__)))
+    include_dirs.append(INCLUDE_DIR)
     include_dirs.append(sysconfig.get_path("include"))
 
     library_dirs = []

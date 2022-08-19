@@ -8,9 +8,10 @@ function(add_tdnat_test NAME)
     tdnat GTest::gtest GTest::gtest_main)
 
   set_target_properties(${NAME} PROPERTIES
-    CXX_STANDARD 14)
+    CXX_STANDARD 14
+    COMPILER_FLAGS "-g -O1")
 endfunction()
 
 add_tdnat_test(link_test)
 add_tdnat_test(identity_jit_test)
-add_tdnat_test(tollvmtype_test)
+add_tdnat_test(llvm_type_test)
