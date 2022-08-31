@@ -48,15 +48,19 @@ public:
 const auto *env = testing::AddGlobalTestEnvironment(new Environment());
 
 template <typename T>
-void add_byval_attr(llvm::LLVMContext &ctx, llvm::Argument *arg) {
+void add_byval_attr(llvm::LLVMContext &ctx, llvm::Value *arg) {
   if (IsABIMemoryClass<T>::value) {
-    arg->addAttr(llvm::Attribute::getWithByValType(ctx, LLVMType<T>::get(ctx)));
+    std::cout << "AddAttr(byval) to arg" << std::endl;
+    assert(llvm::isa<llvm::Argument>(arg));
+    auto cast_arg = llvm::dyn_cast<llvm::Argument>(arg);
+    cast_arg->addAttr(
+        llvm::Attribute::getWithByValType(ctx, LLVMType<T>::get(ctx)));
   }
 }
 
 template <typename First = void, typename... Rest>
 void add_byval_attrs(size_t index, llvm::LLVMContext &ctx,
-                     const std::vector<llvm::Argument *> &args) {
+                     const std::vector<llvm::Value *> &args) {
   add_byval_attr<First>(ctx, args[index]);
   if (sizeof...(Rest) >= 1) {
     add_byval_attrs<Rest...>(index + 1, ctx, args);
@@ -74,26 +78,30 @@ std::unique_ptr<llvm::orc::LLJIT> create_jit(Return (*fn)(Args...)) {
   auto jit = llvm::cantFail(llvm::orc::LLJITBuilder().create());
 
   auto entry_fn = llvm::Function::Create(
-      LLVMFunctionType<abi_type_ptr>::get(*ctx), llvm::Function::ExternalLinkage,
-      EntryFn, mod.get());
+      LLVMFunctionType<abi_type_ptr>::get(*ctx),
+      llvm::Function::ExternalLinkage, EntryFn, mod.get());
 
   auto identity_fn = llvm::Function::Create(
-      LLVMFunctionType<abi_type_ptr>::get(*ctx), llvm::Function::ExternalLinkage,
-      IdentityFn, mod.get());
+      LLVMFunctionType<abi_type_ptr>::get(*ctx),
+      llvm::Function::ExternalLinkage, IdentityFn, mod.get());
 
   auto bb =
       llvm::BasicBlock::Create(entry_fn->getContext(), EntryBlock, entry_fn);
   llvm::IRBuilder<> builder(bb);
 
+  std::vector<llvm::Value *> arguments;
+  std::transform(entry_fn->arg_begin(), entry_fn->arg_end(),
+                 std::back_inserter(arguments),
+                 [](llvm::Argument &arg) { return (llvm::Value *)&arg; });
+  add_byval_attrs<Args...>(0, *ctx, arguments);
 
-  add_byval_attrs<Args...>(0, *ctx,
-                           {entry_fn->arg_begin(), entry_fn->arg_end()});
+  auto call = builder.CreateCall(identity_fn, arguments);
 
-  auto call = builder.CreateCall(identity_fn,
-                                 {entry_fn->arg_begin(), entry_fn->arg_end()});
-
-  if (!IsABIMemoryClass<Return>::value) {
+  if (IsABIMemoryClass<Return>::value) {
     builder.CreateRet(call);
+    auto retptr = entry_fn->getArg(0);
+    retptr->addAttr(llvm::Attribute::get(*ctx, AttrKind::StructRet,
+                                         LLVMType<Return>::get(*ctx)));
   }
 
   llvm::cantFail(jit->addIRModule({std::move(mod), std::move(ctx)}));
