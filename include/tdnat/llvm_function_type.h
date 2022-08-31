@@ -1,6 +1,7 @@
 #pragma once
 
 #include <tdnat/llvm_type.h>
+#include <tdnat/utils.h>
 
 #include <llvm/IR/DerivedTypes.h>
 #include <llvm/IR/LLVMContext.h>
@@ -15,20 +16,6 @@
 
 namespace tdnat {
 
-template <typename T, typename _Tp = void> struct ABISignature {};
-
-template <typename Return, typename... Args>
-struct ABISignature<Return (*)(Args...),
-                    std::enable_if_t<ReturnsOnMemory<Return>::value>> {
-  using type = void (*)(Return *, Args...);
-};
-
-template <typename Return, typename... Args>
-struct ABISignature<Return (*)(Args...),
-                    std::enable_if_t<!ReturnsOnMemory<Return>::value>> {
-  using type = Return (*)(Args...);
-};
-
 template <typename T> struct LLVMFunctionType {};
 
 template <typename Return, typename... Args>
@@ -41,7 +28,7 @@ struct LLVMFunctionType<Return (*)(Args...)> {
 
 template <typename T> struct ABILLVMFunctionType {
   static llvm::FunctionType *get(llvm::LLVMContext &context) {
-    return LLVMFunctionType<typename ABISignature<T>::type>::get(context);
+    return LLVMFunctionType<typename ABIFunctionType<T>::type>::get(context);
   }
 };
 
