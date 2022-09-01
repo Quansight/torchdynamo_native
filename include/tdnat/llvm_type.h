@@ -89,6 +89,11 @@ LLVMTYPE_SPECIALIZE(
 LLVMTYPE_SPECIALIZE(c10::OptionalArrayRef<long>,
                     LLVMType<at::ArrayRef<long>>::get(context));
 
+LLVMTYPE_SPECIALIZE(std::vector<at::Tensor>,
+                    llvm::StructType::get(context,
+                                          {llvm::Type::getInt8PtrTy(context),
+                                           llvm::Type::getInt8PtrTy(context),
+                                           llvm::Type::getInt8PtrTy(context)}));
 #undef LLVMTYPE_SPECIALIZE
 
 // Types covered: optional<ArrayRef<T>>
