@@ -9,6 +9,14 @@ static tdnat::ATenOpRegistry &get_registry() {
 
 namespace tdnat {
 
+c10::optional<ATenOpRef> get_aten_op(const std::string &opname) {
+  const auto &registry = get_registry();
+  if (registry.find(opname) != registry.end()) {
+    return registry.at(opname);
+  }
+  return c10::nullopt;
+}
+
 void global_register_aten_operations(ATenOpRegistry &registry);
 
 void initialize_registry(ATenOpRegistry &registry) {

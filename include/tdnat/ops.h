@@ -12,31 +12,42 @@
 namespace tdnat {
 
 using Addr = uint64_t;
-
-struct ATenOpRefVTable {
-  using LLVMFunctionTypeFn = llvm::FunctionType *(*)(llvm::LLVMContext &);
-  LLVMFunctionTypeFn llvm_function_type_fn_;
-};
+using LLVMFunctionTypeFactory = llvm::FunctionType *(*)(llvm::LLVMContext &);
 
 class ATenOpRef {
 public:
   ATenOpRef() {}
 
-  ATenOpRef(const char *opname, Addr cpufn, ATenOpRefVTable vtable)
-      : opname_(opname), cpufn_(cpufn), vtable_(vtable) {}
+  ATenOpRef(const char *opname, Addr cpufn, bool returns_on_memory,
+            LLVMFunctionTypeFactory llvm_function_type_fn)
+      : opname_(opname), cpufn_(cpufn), returns_on_memory_(returns_on_memory),
+        llvm_function_type_fn_(llvm_function_type_fn) {}
 
   std::string name() { return std::string("__jit_") + opname_; }
 
   Addr cpu() { return cpufn_; }
 
+  bool returns_on_memory() { return returns_on_memory_; }
+
   llvm::FunctionType *llvm_function_type(llvm::LLVMContext &context) {
-    return (*vtable_.llvm_function_type_fn_)(context);
+    return llvm_function_type_fn_(context);
   }
 
 private:
+  // Key used in the registry.
+  // Corresponds to the overloaded name of the operation.
   const char *opname_;
+
+  // Actual address of the function.
   Addr cpufn_;
-  ATenOpRefVTable vtable_;
+
+  // Flag indicating whether this operation's return value is passed
+  // on the stack, whose address is stored in the first parameter.
+  bool returns_on_memory_;
+
+  // Pointer to the function that returns the LLVMFunctionType
+  // instance that corresponds to this function's signature.
+  LLVMFunctionTypeFactory llvm_function_type_fn_;
 };
 
 using ATenOpRegistry = std::unordered_map<std::string, ATenOpRef>;

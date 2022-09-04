@@ -1,8 +1,8 @@
-import shutil
 import sys
 import sysconfig
 import os
 import json
+import warnings
 
 from typing import List, Optional, Sequence
 from setuptools import setup, Command
@@ -33,9 +33,9 @@ INCLUDE_DIR = os.path.join(ROOT_DIR, "include")
 
 GENERATED_DIR = os.path.join(LIB_DIR, "generated")
 TEMPLATES_DIR = os.path.join(LIB_DIR, "templates")
+LINK_DIR = os.path.join(BUILD_DIR, "tdnat", "lib")
 
 TYPE_BLOCKLIST = [
-    BaseType(BaseTy.Dimname),
     BaseType(BaseTy.Dimname),
     BaseType(BaseTy.DimVector),
     BaseType(BaseTy.QScheme),
@@ -113,6 +113,7 @@ def get_extension() -> Extension:
 
     library_dirs = []
     library_dirs.append(os.path.join(get_system_root(), "lib"))
+    library_dirs.append(LINK_DIR)
 
     sources = []
     sources.append(os.path.join(CSRC_DIR, "init.cpp"))
@@ -123,12 +124,15 @@ def get_extension() -> Extension:
         include_dirs=include_dirs,
         library_dirs=library_dirs,
         libraries=[
-            "LLVM"
+            "tdnat"
         ],
         extra_compile_args=[
             "-std=c++14",
             "-DSTRIP_ERROR_MESSAGES=1",
-            "-fvisibility=hidden"
+            "-fvisibility=hidden",
+        ],
+        extra_link_args=[
+            f"-Wl,-rpath,{LINK_DIR}"
         ]
     )
 
@@ -137,6 +141,10 @@ def generate_compile_commands(ext: Extension) -> None:
     include_dirs_args = [f"-I{directory}" for directory in ext.include_dirs]
     library_dirs_args = [f"-L{directory}" for directory in ext.library_dirs]
     library_args = [f"-l{lib}" for lib in ext.libraries]
+
+    if not isinstance(compiler, str):
+        warnings.warn("set your CXX environment variable for generating compile_commands.json")
+        return
 
     obj = []
     for s in ext.sources:

@@ -16,11 +16,9 @@ struct MakeRef<Return (*)(Args...), CPUFn> {
   using type_ptr = Return (*)(Args...);
 
   static ATenOpRegistryEntry get(const char *opname) {
-    return {opname, {opname, (Addr)CPUFn, MakeRef<type_ptr, CPUFn>::vtable()}};
-  }
-
-  static ATenOpRefVTable vtable() {
-    return {&ABILLVMFunctionType<type_ptr>::get};
+    return {opname,
+            {opname, (Addr)CPUFn, IsABIMemoryClass<Return>::value,
+             &ABILLVMFunctionType<type_ptr>::get}};
   }
 };
 
