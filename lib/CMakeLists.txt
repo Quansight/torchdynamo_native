@@ -5,7 +5,8 @@ list(FILTER generated_cpp_files
   EXCLUDE REGEX ".*Everything\.cpp")
 
 add_library(tdnat SHARED
-  llvm_function_builder.cpp
+  function.cpp
+  jit_function.cpp
   ops.cpp
   ${generated_cpp_files})
 

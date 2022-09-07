@@ -14,3 +14,4 @@ endfunction()
 
 add_tdnat_test(link_test)
 add_tdnat_test(jit_ops_test)
+add_tdnat_test(function_test)
