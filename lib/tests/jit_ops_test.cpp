@@ -6,6 +6,7 @@
 
 #include <llvm/ExecutionEngine/Orc/LLJIT.h>
 #include <llvm/IR/IRBuilder.h>
+#include <llvm/IR/Verifier.h>
 #include <llvm/Support/TargetSelect.h>
 
 #include <ATen/ops/add.h>
@@ -31,25 +32,6 @@ static const char *EntryFn = "entry_function";
 static const char *WrappedFn = "wrapped_function";
 static const char *EntryBlock = "entry";
 
-template <typename T>
-void add_byval_attr(llvm::LLVMContext &ctx, llvm::Value *arg) {
-  if (IsABIMemoryClass<T>::value) {
-    assert(llvm::isa<llvm::Argument>(arg));
-    auto cast_arg = llvm::dyn_cast<llvm::Argument>(arg);
-    cast_arg->addAttr(
-        llvm::Attribute::getWithByValType(ctx, LLVMType<T>::get(ctx)));
-  }
-}
-
-template <typename First = void, typename... Rest>
-void add_byval_attrs(size_t index, llvm::LLVMContext &ctx,
-                     const std::vector<llvm::Value *> &args) {
-  add_byval_attr<First>(ctx, args[index]);
-  if (sizeof...(Rest) >= 1) {
-    add_byval_attrs<Rest...>(index + 1, ctx, args);
-  }
-}
-
 template <typename Return, typename... Args>
 std::unique_ptr<llvm::orc::LLJIT> create_jit(Return (*fn)(Args...)) {
   using AttrKind = llvm::Attribute::AttrKind;
@@ -61,12 +43,15 @@ std::unique_ptr<llvm::orc::LLJIT> create_jit(Return (*fn)(Args...)) {
   auto jit = llvm::cantFail(llvm::orc::LLJITBuilder().create());
 
   auto entry_fn = llvm::Function::Create(
-      LLVMFunctionType<abi_type_ptr>::get(*ctx),
+      LLVMFunctionType<abi_type_ptr>::get(*mod),
       llvm::Function::ExternalLinkage, EntryFn, mod.get());
 
   auto wrapped_fn = llvm::Function::Create(
-      LLVMFunctionType<abi_type_ptr>::get(*ctx),
+      LLVMFunctionType<abi_type_ptr>::get(*mod),
       llvm::Function::ExternalLinkage, WrappedFn, mod.get());
+
+  add_attributes<Return, Args...>(entry_fn);
+  add_attributes<Return, Args...>(wrapped_fn);
 
   auto bb =
       llvm::BasicBlock::Create(entry_fn->getContext(), EntryBlock, entry_fn);
@@ -76,19 +61,12 @@ std::unique_ptr<llvm::orc::LLJIT> create_jit(Return (*fn)(Args...)) {
   std::transform(entry_fn->arg_begin(), entry_fn->arg_end(),
                  std::back_inserter(arguments),
                  [](llvm::Argument &arg) { return (llvm::Value *)&arg; });
-  add_byval_attrs<Args...>(0, *ctx, arguments);
 
-  auto call = builder.CreateCall(wrapped_fn, arguments);
+  builder.CreateCall(wrapped_fn, arguments);
+  builder.CreateRetVoid();
 
-  if (IsABIMemoryClass<Return>::value) {
-    builder.CreateRet(call);
-    auto retptr = entry_fn->getArg(0);
-    retptr->addAttr(llvm::Attribute::get(*ctx, AttrKind::StructRet,
-                                         LLVMType<Return>::get(*ctx)));
-  }
-
+  llvm::verifyModule(*mod, &llvm::errs());
   llvm::cantFail(jit->addIRModule({std::move(mod), std::move(ctx)}));
-
   llvm::cantFail(jit->define(llvm::orc::absoluteSymbols(
       {{jit->mangleAndIntern(WrappedFn),
         llvm::JITEvaluatedSymbol::fromPointer(fn)}})));

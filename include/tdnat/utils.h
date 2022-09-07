@@ -1,9 +1,7 @@
 #pragma once
 
-#include <ATen/core/Generator.h>
 #include <ATen/core/TensorBody.h>
 #include <c10/core/Scalar.h>
-#include <c10/core/Storage.h>
 #include <c10/util/Optional.h>
 
 #include <type_traits>
@@ -29,7 +27,7 @@ struct IsABIMemoryClass : public std::false_type {};
 
 template <typename T>
 struct IsABIMemoryClass<c10::optional<T>,
-                       std::enable_if_t<IsABIMemoryClass<T>::value>>
+                        std::enable_if_t<IsABIMemoryClass<T>::value>>
     : public std::true_type {};
 
 template <typename T>
@@ -58,13 +56,13 @@ template <typename T, typename _Tp = void> struct ABIFunctionType {};
 
 template <typename Return, typename... Args>
 struct ABIFunctionType<Return (*)(Args...),
-                    std::enable_if_t<IsABIMemoryClass<Return>::value>> {
-  using type = Return *(*)(Return *, Args...);
+                       std::enable_if_t<IsABIMemoryClass<Return>::value>> {
+  using type = void (*)(Return *, Args...);
 };
 
 template <typename Return, typename... Args>
 struct ABIFunctionType<Return (*)(Args...),
-                    std::enable_if_t<!IsABIMemoryClass<Return>::value>> {
+                       std::enable_if_t<!IsABIMemoryClass<Return>::value>> {
   using type = Return (*)(Args...);
 };
 

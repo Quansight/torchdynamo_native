@@ -1,7 +1,8 @@
 #pragma once
 
 #include <llvm/IR/DerivedTypes.h>
-#include <llvm/IR/LLVMContext.h>
+#include <llvm/IR/IRBuilder.h>
+#include <llvm/IR/Module.h>
 
 #include <c10/util/Optional.h>
 
@@ -12,16 +13,38 @@
 namespace tdnat {
 
 using Addr = uint64_t;
-using LLVMFunctionTypeFactory = llvm::FunctionType *(*)(llvm::LLVMContext &);
+
+struct ATenOpVTable {
+  using LLVMFunctionTypeFn = llvm::FunctionType *(*)(llvm::Module &);
+  using AddAttributesFn = void (*)(llvm::Function *);
+  using AllocateMemForRetFn = llvm::Value *(*)(llvm::IRBuilder<> &);
+
+  ATenOpVTable(LLVMFunctionTypeFn llvm_function_type_fn,
+               AddAttributesFn add_attributes_fn,
+               AllocateMemForRetFn allocate_mem_for_ret_fn)
+      : llvm_function_type_fn_(llvm_function_type_fn),
+        add_attributes_fn_(add_attributes_fn),
+        allocate_mem_for_ret_fn_(allocate_mem_for_ret_fn) {}
+
+  // Pointer to the function that returns the LLVMFunctionType
+  // instance that corresponds to this function's signature.
+  LLVMFunctionTypeFn llvm_function_type_fn_;
+
+  // Pointer to the function that adds the right attributes to a
+  // llvm::Function instance of this operation.
+  AddAttributesFn add_attributes_fn_;
+
+  // Pointer to the function that allocates space on the stack
+  // for this operation return value.
+  AllocateMemForRetFn allocate_mem_for_ret_fn_;
+};
 
 class ATenOpRef {
 public:
-  ATenOpRef() {}
-
   ATenOpRef(const char *opname, Addr cpufn, bool returns_on_memory,
-            LLVMFunctionTypeFactory llvm_function_type_fn)
+            ATenOpVTable vtable)
       : opname_(opname), cpufn_(cpufn), returns_on_memory_(returns_on_memory),
-        llvm_function_type_fn_(llvm_function_type_fn) {}
+        vtable_(vtable) {}
 
   std::string name() { return std::string("__jit_") + opname_; }
 
@@ -29,8 +52,14 @@ public:
 
   bool returns_on_memory() { return returns_on_memory_; }
 
-  llvm::FunctionType *llvm_function_type(llvm::LLVMContext &context) {
-    return llvm_function_type_fn_(context);
+  llvm::FunctionType *llvm_function_type(llvm::Module &module) {
+    return vtable_.llvm_function_type_fn_(module);
+  }
+
+  void add_attributes(llvm::Function *fn) { vtable_.add_attributes_fn_(fn); }
+
+  llvm::Value *allocate_mem_for_ret(llvm::IRBuilder<> &builder) {
+    return vtable_.allocate_mem_for_ret_fn_(builder);
   }
 
 private:
@@ -45,9 +74,8 @@ private:
   // on the stack, whose address is stored in the first parameter.
   bool returns_on_memory_;
 
-  // Pointer to the function that returns the LLVMFunctionType
-  // instance that corresponds to this function's signature.
-  LLVMFunctionTypeFactory llvm_function_type_fn_;
+  // ATen type-specific operations.
+  ATenOpVTable vtable_;
 };
 
 using ATenOpRegistry = std::unordered_map<std::string, ATenOpRef>;
