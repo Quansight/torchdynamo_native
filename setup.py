@@ -11,7 +11,7 @@ from setuptools.command.build_ext import build_ext
 
 from torch.utils.cpp_extension import CppExtension
 from torchgen.gen import parse_native_yaml
-from torchgen.model import NativeFunction, BaseType, BaseTy, ListType
+from torchgen.model import NativeFunction, BaseType, BaseTy, ListType, OptionalType, Type
 from torchgen.utils import FileManager, mapMaybe
 
 from helper.build.cmake import CMake
@@ -49,13 +49,20 @@ SHARDS = 5
 # Code Generation Entry-Point ====================================================
 # ================================================================================
 
+def contains_blocklist_type(t: Type) -> bool:
+    if isinstance(t, BaseType):
+        return t in TYPE_BLOCKLIST
+    if isinstance(t, OptionalType) or isinstance(t, ListType):
+        return contains_blocklist_type(t.elem)
+    assert False, f"unknown type: {t}"
+
 def filter_nativefunctions(native_functions: Sequence[NativeFunction]) -> Sequence[NativeFunction]:
     def predicate(f: NativeFunction) -> bool:
         return not (
             f.root_name[0] == "_"
             or (isinstance(f.func.returns, tuple) and len(f.func.returns) > 1)
-            or any(r.type in TYPE_BLOCKLIST for r in f.func.returns)
-            or any(a.type in TYPE_BLOCKLIST for a in f.func.arguments.flat_all)
+            or any(contains_blocklist_type(r.type) for r in f.func.returns)
+            or any(contains_blocklist_type(a.type) for a in f.func.arguments.flat_all)
         )
     # Ignore internal functions: those that start with '_'.
     return list(filter(predicate, native_functions))
