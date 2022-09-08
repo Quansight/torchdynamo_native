@@ -26,3 +26,9 @@ void JITFunction::run(at::ArrayRef<at::Tensor> in_tensors,
 
   cache_(in_tensors.data(), out_tensors.data());
 }
+
+std::vector<at::Tensor> JITFunction::run(at::ArrayRef<at::Tensor> in_tensors) {
+  std::vector<at::Tensor> out_tensors(data_.out_tensors_);
+  run(in_tensors, out_tensors);
+  return out_tensors;
+}

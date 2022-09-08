@@ -107,6 +107,8 @@ struct JITFunction {
   void run(at::ArrayRef<at::Tensor> in_tensors,
            at::ArrayRef<at::Tensor> out_tensors);
 
+  std::vector<at::Tensor> run(at::ArrayRef<at::Tensor> in_tensors);
+
 private:
   std::unique_ptr<llvm::orc::LLJIT> jit_;
 
