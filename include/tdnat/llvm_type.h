@@ -44,10 +44,7 @@ llvm::Type *get_or_create_type_by_name(llvm::Module &module);
 
 template <typename T, typename _Tp = void> struct LLVMType {};
 
-// Types covered:
-// References (T&) and pointers (T*) for the following T:
-//   - Tensor
-//   - Scalar
+// Types covered: references (T&) and pointers (T*).
 template <typename T>
 struct LLVMType<T, std::enable_if_t<std::is_pointer<T>::value ||
                                     std::is_reference<T>::value>> {
@@ -58,6 +55,29 @@ struct LLVMType<T, std::enable_if_t<std::is_pointer<T>::value ||
 
   static llvm::Type *get(llvm::Module &module) {
     return llvm::PointerType::get(LLVMType<Tval>::get(module), 0);
+  }
+};
+
+// Types covered: integer types without bool
+//   - (unsigned) char
+//   - (unsigned) short
+//   - (unsigned) int
+//   - (unsigned) long
+//   - (unsigned) long long
+template <typename T>
+struct LLVMType<T, std::enable_if_t<std::numeric_limits<T>::is_integer &&
+                                    !std::is_same<T, bool>::value>> {
+  static std::string name() {
+    size_t bits = sizeof(T) * 8;
+    if (std::is_integral<T>::value) {
+      return std::string("i") + std::to_string(bits);
+    } else {
+      return std::string("u") + std::to_string(bits);
+    }
+  }
+
+  static llvm::Type *get(llvm::Module &module) {
+    return llvm::Type::getIntNTy(module.getContext(), sizeof(T) * 8);
   }
 };
 
@@ -82,14 +102,6 @@ template <> struct LLVMType<double> {
 
   static llvm::Type *get(llvm::Module &module) {
     return llvm::Type::getDoubleTy(module.getContext());
-  }
-};
-
-template <> struct LLVMType<long> {
-  static std::string name() { return "long"; }
-
-  static llvm::Type *get(llvm::Module &module) {
-    return llvm::Type::getIntNTy(module.getContext(), sizeof(long) * 8);
   }
 };
 
@@ -236,18 +248,15 @@ template <> struct LLVMType<std::vector<at::Tensor>> {
   }
 };
 
-template <> struct LLVMType<c10::List<c10::optional<at::Tensor>>> {
-  static std::string name() { return "c10::List<c10::optional<at::Tensor>>"; }
+// Types covered: List<T>
+template <typename T> struct LLVMType<c10::List<T>> {
+  static std::string name() { return "c10::List<" + LLVMType<T>::name() + ">"; }
 
   static llvm::Type *get(llvm::Module &module) {
-    return get_or_create_type_by_name<c10::List<c10::optional<at::Tensor>>>(
-        module);
+    return get_or_create_type_by_name<c10::List<T>>(module);
   }
 
   static llvm::StructType *create(llvm::Module &module) {
-    // TODO: clearly, this is wrong.
-    // However, we don't really instantiate a new c10::List anywhere, so
-    // this is fine for now...
     return llvm::StructType::create(
         {llvm::Type::getInt8PtrTy(module.getContext())}, name(), false);
   }
