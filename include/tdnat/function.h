@@ -43,18 +43,45 @@ private:
     return mod_->getFunction(name);
   }
 
+  template <typename Factory> llvm::Function *__add_factory_decl() {
+    return __add_function_decl(Factory::name(), &Factory::create);
+  }
+
   // For ATenOpRef, we don't have type information.
   llvm::Function *__add_aten_op_decl(ATenOpRef ref);
 
   template <typename T> Value __build_scalar_impl(llvm::Value *val) {
-    auto scalar_fn =
-        __add_function_decl(factory::__scalar_id, &factory::scalar<T>);
+    auto scalar_fn = __add_factory_decl<factory::Scalar<T>>();
 
     auto alloca = builder_.CreateAlloca(LLVMType<at::Scalar>::get(*mod_));
     alloca->setAlignment(llvm::Align(alignof(at::Scalar)));
 
     builder_.CreateCall(scalar_fn, {alloca, val});
     return {alloca};
+  }
+
+  template <typename T, typename Factory>
+  Value __build_optional_from_factory(c10::optional<Value> val) {
+    auto fn = __add_factory_decl<Factory>();
+
+    std::vector<llvm::Value *> args;
+    if (IsABIMemoryClass<T>::value) {
+      auto alloca =
+          builder_.CreateAlloca(LLVMType<c10::optional<T>>::get(*mod_));
+      args.push_back(alloca);
+    }
+
+    if (val.has_value()) {
+      args.push_back(val.value().val_);
+    }
+
+    auto call = builder_.CreateCall(fn, args);
+
+    if (IsABIMemoryClass<T>::value) {
+      return {args[0]};
+    } else {
+      return {call};
+    }
   }
 
   void __check_finalized(bool expected = false);
@@ -70,9 +97,27 @@ public:
   std::vector<Value> set_outputs(const std::vector<Value> &outputs);
   Value set_output(const Value &output);
 
+  Value build_bool(bool b);
   Value build_int(int64_t n);
-  Value build_intarray(const std::vector<int64_t> &v);
+  Value build_intarray(const std::vector<Value> &v);
+  Value build_optional_tensorlist(const std::vector<Value> &v);
   Value build_scalar(int64_t n);
+  Value build_tensorlist(const std::vector<Value> &v);
+
+  template <typename T> Value build_optional(Value val) {
+    __check_finalized();
+    return __build_optional_from_factory<T, factory::Optional<T>>({val});
+  }
+
+  template <typename T> Value build_optional_literal(Value val) {
+    __check_finalized();
+    return __build_optional_from_factory<T, factory::OptionalLit<T>>({val});
+  }
+
+  template <typename T> Value build_optional_null() {
+    __check_finalized();
+    return __build_optional_from_factory<T, factory::NullOpt<T>>(c10::nullopt);
+  }
 
   void dump();
   void finalize();
