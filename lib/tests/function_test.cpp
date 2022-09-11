@@ -9,6 +9,7 @@
 #include <ATen/ops/index.h>
 #include <ATen/ops/randint.h>
 #include <ATen/ops/sum.h>
+#include <ATen/core/Formatting.h>
 
 #include <algorithm>
 #include <iterator>
@@ -53,8 +54,8 @@ TEST(FunctionTest, CatTest) {
     auto t1 = fn.set_placeholder(0, "t1");
     auto t2 = fn.set_placeholder(1, "t2");
 
-    auto dim_ = fn.build_int(dim);
-    auto tensorlist = fn.build_tensorlist({t1, t2});
+    auto dim_ = fn.build_integer<int64_t>(dim);
+    auto tensorlist = fn.build_arrayref<at::Tensor>({t1, t2});
     auto cat = fn.add_call("cat", "cat", {tensorlist, dim_});
 
     fn.set_output(cat);
@@ -83,7 +84,7 @@ TEST(FunctionTest, IndexTest) {
     auto i1 = fn.set_placeholder(1, "i1");
     auto i2 = fn.set_placeholder(2, "i2");
 
-    auto nullopt = fn.build_optional_null<at::Tensor>();
+    auto nullopt = fn.build_optional<at::Tensor>();
     auto i1_opt = fn.build_optional<at::Tensor>(i1);
     auto i2_opt = fn.build_optional<at::Tensor>(i2);
     auto indices = fn.build_optional_tensorlist({nullopt, i1_opt, i2_opt});
@@ -113,15 +114,14 @@ TEST(FunctionTest, ArgMinTest) {
   {
     auto tensor = fn.set_placeholder(0, "tensor");
 
-    auto dim_ = fn.build_int(dim);
-    auto dim_opt = fn.build_optional_literal<int64_t>(dim_);
+    auto dim_ = fn.build_integer<int64_t>(dim);
+    auto dim_opt = fn.build_optional_lit<int64_t>(dim_);
     auto keepdim_ = fn.build_bool(keepdim);
 
     auto argmin = fn.add_call("argmin", "argmin", {tensor, dim_opt, keepdim_});
 
     fn.set_output(argmin);
     fn.finalize();
-    fn.dump();
   }
 
   auto jitfn = fn.into_jit();
@@ -138,33 +138,36 @@ TEST(FunctionTest, SumTest) {
   auto tensor = at::randint(10, {1, 10, 10});
   auto dim = std::vector<long>{0, 1};
   auto keepdim = true;
-  auto dtype = at::ScalarType::Float;
-  auto expect = at::sum(tensor, dim, keepdim, dtype);
+  auto type = at::ScalarType::Float;
+  auto expect = at::sum(tensor, dim, keepdim, type);
 
   {
     auto tensor = fn.set_placeholder(0, "tensor");
 
     auto dim_ = std::vector<tdnat::Value>{};
     std::transform(dim.begin(), dim.end(), std::back_inserter(dim_),
-                   [&](long i) { return fn.build_int(i); });
-    auto dim_array = fn.build_intarray(dim_);
+                   [&](long i) { return fn.build_integer<int64_t>(i); });
+    auto dim_array = fn.build_arrayref_lit<int64_t>(dim_);
+
+    // auto type_ = fn.build_scalar_type(type);
+    // auto type_opt = fn.build_optional_lit<at::ScalarType>(type_);
+    auto type_opt = fn.build_optional<at::ScalarType>();
 
     auto keepdim = fn.build_bool(true);
 
-    auto argmin = fn.add_call("argmin", "argmin", {tensor, dim_opt, keepdim});
+    auto sum = fn.add_call("sum", "sum.dim_IntList", {tensor, dim_array, keepdim, type_opt});
 
-    fn.set_output(argmin);
+    fn.set_output(sum);
     fn.finalize();
     fn.dump();
   }
 
-  using FnType = at::Tensor (*)(const at::Tensor &, at::IntArrayRef, bool,
-                                c10::optional<at::ScalarType>);
+  auto jitfn = fn.into_jit();
+  auto result = jitfn.run({tensor});
 
-  auto jit = create_jit((FnType)at::sum);
-  auto symbol = llvm::cantFail(jit->lookup(WrappedFn));
-  auto func = (void *)symbol.getAddress();
-  auto result = ((FnType)func)(tensor, dim, keepdim, dtype);
+  std::cout << "Result: " << result[0] << std::endl;
+  std::cout << "Expect: " << expect << std::endl;
 
-  ASSERT_TRUE(expect.equal(result));
+  ASSERT_EQ(result.size(), 1);
+  ASSERT_TRUE(expect.equal(result[0]));
 }

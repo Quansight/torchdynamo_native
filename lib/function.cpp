@@ -24,6 +24,59 @@ llvm::Function *Function::__add_aten_op_decl(ATenOpRef ref) {
   return mod_->getFunction(ref.name());
 }
 
+template <typename T> Value Function::__build_scalar(Value val) {
+  auto scalar_fn = __add_factory_decl<factory::Scalar<T>>();
+
+  auto alloca = builder_.CreateAlloca(__get_type<at::Scalar>());
+  alloca->setAlignment(llvm::Align(alignof(at::Scalar)));
+
+  builder_.CreateCall(scalar_fn, {alloca, val.val_});
+  return {alloca};
+}
+
+template <typename T> Value Function::__build_optional(Value val) {
+  auto fn = __add_factory_decl<factory::Optional<T>>();
+
+  std::vector<llvm::Value *> args;
+
+  if (IsABIMemoryClass<T>::value) {
+    auto alloca = builder_.CreateAlloca(__get_type<c10::optional<T>>());
+    args.push_back(alloca);
+  }
+
+  args.push_back(val.val_);
+
+  auto call = builder_.CreateCall(fn, args);
+
+  if (IsABIMemoryClass<T>::value) {
+    return {args[0]};
+  } else {
+    return {call};
+  }
+}
+
+template <typename T>
+Value Function::__build_arrayref(const std::vector<Value> &vals,
+                                 bool from_literal) {
+  auto fn = __add_factory_decl<factory::ArrayRef<T>>();
+
+  auto size = build_integer(vals.size()).val_;
+  auto alloca = builder_.CreateAlloca(__get_type<T>(), size);
+
+  for (size_t i = 0; i < vals.size(); i++) {
+    llvm::Value *value = vals[i].val_;
+
+    if (!from_literal) {
+      value = builder_.CreateLoad(value);
+    }
+
+    auto gep = builder_.CreateGEP(alloca, builder_.getInt64(i));
+    builder_.CreateStore(value, gep);
+  }
+
+  return {builder_.CreateCall(fn, {alloca, size})};
+}
+
 void Function::__check_finalized(bool expected) {
   if (finalized_ != expected) {
     std::ostringstream msg;
@@ -36,6 +89,10 @@ void Function::__check_finalized(bool expected) {
 
     TORCH_CHECK(finalized_ == expected, msg.str());
   }
+}
+
+template <typename T> llvm::Type *Function::__get_type() {
+  return LLVMType<T>::get(*mod_);
 }
 
 Function::Function(const FunctionData &data)
@@ -106,7 +163,7 @@ std::vector<Value> Function::set_outputs(const std::vector<Value> &outputs) {
 
   for (size_t i = 0; i < data_.out_tensors_; i++) {
     auto ptr = outputs[i].val_;
-    auto value = builder_.CreateLoad(LLVMType<at::Tensor>::get(*mod_), ptr);
+    auto value = builder_.CreateLoad(__get_type<at::Tensor>(), ptr);
 
     auto out_ptr = builder_.CreateGEP(fn_->getArg(1), builder_.getInt64(i));
     builder_.CreateStore(value, out_ptr);
@@ -123,30 +180,12 @@ Value Function::set_output(const Value &output) {
 
 Value Function::build_bool(bool b) {
   __check_finalized();
-
   return {builder_.getInt1(b)};
 }
 
-Value Function::build_int(int64_t n) {
+Value Function::build_scalar_type(at::ScalarType type) {
   __check_finalized();
-
-  return {builder_.getInt64(n)};
-}
-
-Value Function::build_intarray(const std::vector<Value> &v) {
-  __check_finalized();
-
-  auto intarrayref_fn = __add_factory_decl<factory::ArrayRef<int64_t>>();
-
-  auto size = builder_.getIntN(sizeof(size_t) * 8, v.size());
-  auto alloca = builder_.CreateAlloca(LLVMType<int64_t>::get(*mod_), size);
-
-  for (size_t i = 0; i < v.size(); i++) {
-    auto elem_ptr = builder_.CreateGEP(alloca, builder_.getInt64(i));
-    builder_.CreateStore(v[i].val_, elem_ptr);
-  }
-
-  return {builder_.CreateCall(intarrayref_fn, {alloca, size})};
+  return {build_integer(static_cast<int8_t>(type))};
 }
 
 Value Function::build_optional_tensorlist(const std::vector<Value> &v) {
@@ -157,15 +196,14 @@ Value Function::build_optional_tensorlist(const std::vector<Value> &v) {
   auto optional_tensorlist_fn =
       __add_factory_decl<factory::OptionalTensorList>();
 
-  auto size = builder_.getIntN(sizeof(size_t) * 8, v.size());
-  auto alloca =
-      builder_.CreateAlloca(LLVMType<OptionalTensor>::get(*mod_), size);
+  auto size = build_integer(v.size()).val_;
+  auto alloca = builder_.CreateAlloca(__get_type<OptionalTensor>(), size);
   auto alloca_ret =
-      builder_.CreateAlloca(LLVMType<c10::List<OptionalTensor>>::get(*mod_));
+      builder_.CreateAlloca(__get_type<c10::List<OptionalTensor>>());
 
   for (size_t i = 0; i < v.size(); i++) {
     auto ptr = v[i].val_;
-    auto load = builder_.CreateLoad(LLVMType<OptionalTensor>::get(*mod_), ptr);
+    auto load = builder_.CreateLoad(__get_type<OptionalTensor>(), ptr);
     auto elem_ptr = builder_.CreateGEP(alloca, builder_.getInt64(i));
     builder_.CreateStore(load, elem_ptr);
   }
@@ -176,27 +214,76 @@ Value Function::build_optional_tensorlist(const std::vector<Value> &v) {
 
 Value Function::build_scalar(int64_t n) {
   __check_finalized();
-
-  return __build_scalar_impl<int64_t>(builder_.getInt64(n));
+  return __build_scalar<int64_t>({builder_.getInt64(n)});
 }
 
-Value Function::build_tensorlist(const std::vector<Value> &v) {
+template <typename T> Value Function::build_integer(T n) {
+  __check_finalized();
+  return {builder_.getIntN(sizeof(T) * 8, n)};
+}
+
+template Value Function::build_integer<size_t>(size_t);
+template Value Function::build_integer<int32_t>(int32_t);
+template Value Function::build_integer<int64_t>(int64_t);
+
+template <typename T>
+Value Function::build_arrayref(const std::vector<Value> &v) {
+  __check_finalized();
+  return __build_arrayref<T>(v, /* from_literal= */ false);
+}
+
+template Value Function::build_arrayref<at::Tensor>(const std::vector<Value> &);
+
+template <typename T>
+Value Function::build_arrayref_lit(const std::vector<Value> &v) {
+  __check_finalized();
+  return __build_arrayref<T>(v, /* from_literal= */ true);
+}
+
+template Value Function::build_arrayref_lit<int64_t>(const std::vector<Value> &);
+
+template <typename T> Value Function::build_optional() {
   __check_finalized();
 
-  auto tensorlist_fn = __add_factory_decl<factory::ArrayRef<at::Tensor>>();
+  auto nullopt_fn = __add_factory_decl<factory::NullOpt<T>>();
 
-  auto size = builder_.getIntN(sizeof(size_t) * 8, v.size());
-  auto alloca = builder_.CreateAlloca(LLVMType<at::Tensor>::get(*mod_), size);
+  std::vector<llvm::Value *> args;
 
-  for (size_t i = 0; i < v.size(); i++) {
-    auto ptr = v[i].val_;
-    auto load = builder_.CreateLoad(LLVMType<at::Tensor>::get(*mod_), ptr);
-    auto elem_ptr = builder_.CreateGEP(alloca, builder_.getInt64(i));
-    builder_.CreateStore(load, elem_ptr);
+  if (IsABIMemoryClass<T>::value) {
+    auto alloca = builder_.CreateAlloca(__get_type<c10::optional<T>>());
+    args.push_back(alloca);
   }
 
-  return {builder_.CreateCall(tensorlist_fn, {alloca, size})};
+  auto call = builder_.CreateCall(nullopt_fn, args);
+
+  if (IsABIMemoryClass<T>::value) {
+    return {args[0]};
+  } else {
+    return {call};
+  }
 }
+
+template Value Function::build_optional<at::Tensor>();
+template Value Function::build_optional<at::ScalarType>();
+
+template <typename T> Value Function::build_optional(Value val) {
+  __check_finalized();
+  return __build_optional<T>({val});
+}
+
+template Value Function::build_optional<at::Tensor>(Value);
+
+template <typename T> Value Function::build_optional_lit(Value val) {
+  __check_finalized();
+
+  auto alloca = builder_.CreateAlloca(__get_type<T>());
+  builder_.CreateStore(val.val_, alloca);
+
+  return __build_optional<T>({alloca});
+}
+
+template Value Function::build_optional_lit<long>(Value);
+template Value Function::build_optional_lit<at::ScalarType>(Value);
 
 void Function::dump() { mod_->print(llvm::outs(), nullptr); }
 

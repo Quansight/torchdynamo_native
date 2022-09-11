@@ -50,41 +50,18 @@ private:
   // For ATenOpRef, we don't have type information.
   llvm::Function *__add_aten_op_decl(ATenOpRef ref);
 
-  template <typename T> Value __build_scalar_impl(llvm::Value *val) {
-    auto scalar_fn = __add_factory_decl<factory::Scalar<T>>();
+  template <typename T> Value __build_scalar(Value val);
 
-    auto alloca = builder_.CreateAlloca(LLVMType<at::Scalar>::get(*mod_));
-    alloca->setAlignment(llvm::Align(alignof(at::Scalar)));
+  template <typename T> Value __build_optional(Value val);
 
-    builder_.CreateCall(scalar_fn, {alloca, val});
-    return {alloca};
-  }
+  template <typename T>
+  Value __build_arrayref(const std::vector<Value> &vals, bool from_literal);
 
-  template <typename T, typename Factory>
-  Value __build_optional_from_factory(c10::optional<Value> val) {
-    auto fn = __add_factory_decl<Factory>();
-
-    std::vector<llvm::Value *> args;
-    if (IsABIMemoryClass<T>::value) {
-      auto alloca =
-          builder_.CreateAlloca(LLVMType<c10::optional<T>>::get(*mod_));
-      args.push_back(alloca);
-    }
-
-    if (val.has_value()) {
-      args.push_back(val.value().val_);
-    }
-
-    auto call = builder_.CreateCall(fn, args);
-
-    if (IsABIMemoryClass<T>::value) {
-      return {args[0]};
-    } else {
-      return {call};
-    }
-  }
-
+  // Checks whether this function was (not) finalized if
+  // 'expected' is true (false).
   void __check_finalized(bool expected = false);
+
+  template <typename T> llvm::Type *__get_type();
 
 public:
   Function(const FunctionData &data);
@@ -97,32 +74,27 @@ public:
   std::vector<Value> set_outputs(const std::vector<Value> &outputs);
   Value set_output(const Value &output);
 
-  Value build_bool(bool b);
-  Value build_int(int64_t n);
-  Value build_intarray(const std::vector<Value> &v);
-  Value build_optional_tensorlist(const std::vector<Value> &v);
-  Value build_scalar(int64_t n);
-  Value build_tensorlist(const std::vector<Value> &v);
-
-  template <typename T> Value build_optional(Value val) {
-    __check_finalized();
-    return __build_optional_from_factory<T, factory::Optional<T>>({val});
-  }
-
-  template <typename T> Value build_optional_literal(Value val) {
-    __check_finalized();
-    return __build_optional_from_factory<T, factory::OptionalLit<T>>({val});
-  }
-
-  template <typename T> Value build_optional_null() {
-    __check_finalized();
-    return __build_optional_from_factory<T, factory::NullOpt<T>>(c10::nullopt);
-  }
-
   void dump();
   void finalize();
 
   JITFunction into_jit();
+
+  Value build_bool(bool b);
+
+  Value build_scalar_type(at::ScalarType type);
+
+  Value build_optional_tensorlist(const std::vector<Value> &v);
+
+  Value build_scalar(int64_t n);
+
+  template <typename T> Value build_integer(T n);
+
+  template <typename T> Value build_arrayref(const std::vector<Value> &v);
+  template <typename T> Value build_arrayref_lit(const std::vector<Value> &v);
+
+  template <typename T> Value build_optional();
+  template <typename T> Value build_optional(Value val);
+  template <typename T> Value build_optional_lit(Value val);
 
 private:
   FunctionData data_;

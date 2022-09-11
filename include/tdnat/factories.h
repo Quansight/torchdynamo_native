@@ -43,13 +43,6 @@ template <typename T> struct Optional {
   static c10::optional<T> create(const T &val) { return {val}; }
 };
 
-template <typename T> struct OptionalLit {
-  static std::string name() {
-    return "OptionalLit<" + LLVMType<T>::name() + ">";
-  }
-  static c10::optional<T> create(T val) { return {val}; }
-};
-
 template <typename T> struct NullOpt {
   static std::string name() { return "NullOpt<" + LLVMType<T>::name() + ">"; }
   static c10::optional<T> create() { return {c10::nullopt}; }
