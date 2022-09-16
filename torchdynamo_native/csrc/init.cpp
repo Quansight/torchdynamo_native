@@ -1,4 +1,4 @@
-#include <tdnat/llvm_function_builder.h>
+#include <tdnat/function.h>
 #include <tdnat/ops.h>
 
 #include <pybind11/pybind11.h>
@@ -17,8 +17,11 @@ PYBIND11_MODULE(_C, m) {
   py::class_<tdnat::Value>(m, "Value")
       .def(py::init());
 
-  py::class_<tdnat::LLVMFunctionBuilder>(m, "LLVMFunctionBuilder")
+  py::class_<tdnat::FunctionData>(m, "FunctionData")
       .def(py::init<const std::string&, size_t, size_t>());
+
+  py::class_<tdnat::Function>(m, "Function")
+      .def(py::init<const tdnat::FunctionData&>());
 }
 
 } // namespace

@@ -115,11 +115,19 @@ def get_system_root() -> str:
 
 def get_extension() -> Extension:
     include_dirs = []
+
+    # torchdynamo_native include directory
     include_dirs.append(INCLUDE_DIR)
+    # Python include directory
     include_dirs.append(sysconfig.get_path("include"))
+    # System include directory (one level below Python's)
+    include_dirs.append(os.path.dirname(sysconfig.get_path("include")))
 
     library_dirs = []
+
+    # System library directory (sibling directory of /bin/python -- executable)
     library_dirs.append(os.path.join(get_system_root(), "lib"))
+    # Compiled torchdynamo_native install path.
     library_dirs.append(LINK_DIR)
 
     sources = []
