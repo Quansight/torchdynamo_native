@@ -32,27 +32,17 @@ private:
   // can be called by the JIT function.
   template <typename Return, typename... Args>
   llvm::Function *__add_function_decl(const std::string &name,
-                                      Return (*fn)(Args...)) {
-    if (fnaddrmap_.find(name) == fnaddrmap_.end()) {
-      fnaddrmap_[name] = reinterpret_cast<Addr>(fn);
-      auto llvm_fn = llvm::Function::Create(
-          ABILLVMFunctionType<Return (*)(Args...)>::get(*mod_),
-          llvm::GlobalValue::ExternalLinkage, name, *mod_);
-      add_attributes<Return, Args...>(llvm_fn);
-    }
-    return mod_->getFunction(name);
-  }
+                                      Return (*fn)(Args...));
 
-  template <typename Factory> llvm::Function *__add_factory_decl() {
-    return __add_function_decl(Factory::name(), &Factory::create);
-  }
+  template <typename Factory> llvm::Function *__add_factory_decl();
 
   // For ATenOpRef, we don't have type information.
   llvm::Function *__add_aten_op_decl(ATenOpRef ref);
 
   template <typename T> Value __build_scalar(Value val);
 
-  template <typename T> Value __build_optional(Value val);
+  template <typename T, typename Factory>
+  Value __build_optional(c10::optional<Value> val = c10::nullopt);
 
   template <typename T>
   Value __build_arrayref(const std::vector<Value> &vals, bool from_literal);
@@ -136,3 +126,6 @@ private:
 };
 
 } // namespace tdnat
+
+// tdnat::Function member function implementations.
+#include <tdnat/function_inl.h>

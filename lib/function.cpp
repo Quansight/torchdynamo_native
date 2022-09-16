@@ -24,59 +24,6 @@ llvm::Function *Function::__add_aten_op_decl(ATenOpRef ref) {
   return mod_->getFunction(ref.name());
 }
 
-template <typename T> Value Function::__build_scalar(Value val) {
-  auto scalar_fn = __add_factory_decl<factory::Scalar<T>>();
-
-  auto alloca = builder_.CreateAlloca(__get_type<at::Scalar>());
-  alloca->setAlignment(llvm::Align(alignof(at::Scalar)));
-
-  builder_.CreateCall(scalar_fn, {alloca, val.val_});
-  return {alloca};
-}
-
-template <typename T> Value Function::__build_optional(Value val) {
-  auto fn = __add_factory_decl<factory::Optional<T>>();
-
-  std::vector<llvm::Value *> args;
-
-  if (IsABIMemoryClass<T>::value) {
-    auto alloca = builder_.CreateAlloca(__get_type<c10::optional<T>>());
-    args.push_back(alloca);
-  }
-
-  args.push_back(val.val_);
-
-  auto call = builder_.CreateCall(fn, args);
-
-  if (IsABIMemoryClass<T>::value) {
-    return {args[0]};
-  } else {
-    return {call};
-  }
-}
-
-template <typename T>
-Value Function::__build_arrayref(const std::vector<Value> &vals,
-                                 bool from_literal) {
-  auto fn = __add_factory_decl<factory::ArrayRef<T>>();
-
-  auto size = build_integer(vals.size()).val_;
-  auto alloca = builder_.CreateAlloca(__get_type<T>(), size);
-
-  for (size_t i = 0; i < vals.size(); i++) {
-    llvm::Value *value = vals[i].val_;
-
-    if (!from_literal) {
-      value = builder_.CreateLoad(value);
-    }
-
-    auto gep = builder_.CreateGEP(alloca, builder_.getInt64(i));
-    builder_.CreateStore(value, gep);
-  }
-
-  return {builder_.CreateCall(fn, {alloca, size})};
-}
-
 void Function::__check_finalized(bool expected) {
   if (finalized_ != expected) {
     std::ostringstream msg;
@@ -89,10 +36,6 @@ void Function::__check_finalized(bool expected) {
 
     TORCH_CHECK(finalized_ == expected, msg.str());
   }
-}
-
-template <typename T> llvm::Type *Function::__get_type() {
-  return LLVMType<T>::get(*mod_);
 }
 
 Function::Function(const FunctionData &data)
@@ -216,74 +159,6 @@ Value Function::build_scalar(int64_t n) {
   __check_finalized();
   return __build_scalar<int64_t>({builder_.getInt64(n)});
 }
-
-template <typename T> Value Function::build_integer(T n) {
-  __check_finalized();
-  return {builder_.getIntN(sizeof(T) * 8, n)};
-}
-
-template Value Function::build_integer<size_t>(size_t);
-template Value Function::build_integer<int32_t>(int32_t);
-template Value Function::build_integer<int64_t>(int64_t);
-
-template <typename T>
-Value Function::build_arrayref(const std::vector<Value> &v) {
-  __check_finalized();
-  return __build_arrayref<T>(v, /* from_literal= */ false);
-}
-
-template Value Function::build_arrayref<at::Tensor>(const std::vector<Value> &);
-
-template <typename T>
-Value Function::build_arrayref_lit(const std::vector<Value> &v) {
-  __check_finalized();
-  return __build_arrayref<T>(v, /* from_literal= */ true);
-}
-
-template Value Function::build_arrayref_lit<int64_t>(const std::vector<Value> &);
-
-template <typename T> Value Function::build_optional() {
-  __check_finalized();
-
-  auto nullopt_fn = __add_factory_decl<factory::NullOpt<T>>();
-
-  std::vector<llvm::Value *> args;
-
-  if (IsABIMemoryClass<T>::value) {
-    auto alloca = builder_.CreateAlloca(__get_type<c10::optional<T>>());
-    args.push_back(alloca);
-  }
-
-  auto call = builder_.CreateCall(nullopt_fn, args);
-
-  if (IsABIMemoryClass<T>::value) {
-    return {args[0]};
-  } else {
-    return {call};
-  }
-}
-
-template Value Function::build_optional<at::Tensor>();
-template Value Function::build_optional<at::ScalarType>();
-
-template <typename T> Value Function::build_optional(Value val) {
-  __check_finalized();
-  return __build_optional<T>({val});
-}
-
-template Value Function::build_optional<at::Tensor>(Value);
-
-template <typename T> Value Function::build_optional_lit(Value val) {
-  __check_finalized();
-
-  auto alloca = builder_.CreateAlloca(__get_type<T>());
-  builder_.CreateStore(val.val_, alloca);
-
-  return __build_optional<T>({alloca});
-}
-
-template Value Function::build_optional_lit<long>(Value);
-template Value Function::build_optional_lit<at::ScalarType>(Value);
 
 void Function::dump() { mod_->print(llvm::outs(), nullptr); }
 
