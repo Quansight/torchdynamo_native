@@ -27,16 +27,6 @@ template <typename T> Value Function::__build_scalar(Value val) {
   return {alloca};
 }
 
-template <typename T> inline void print_optional(c10::optional<T> opt) {}
-template <>
-inline void print_optional<at::ScalarType>(c10::optional<at::ScalarType> opt) {
-  if (opt.has_value()) {
-    printf("Type: %d\n", static_cast<int8_t>(opt.value()));
-  } else {
-    printf("Type: nullopt\n");
-  }
-}
-
 template <typename T, typename Factory>
 Value Function::__build_optional(c10::optional<Value> val) {
   auto fn = __add_factory_decl<Factory>();
@@ -53,13 +43,6 @@ Value Function::__build_optional(c10::optional<Value> val) {
   }
 
   auto call = builder_.CreateCall(fn, args);
-  auto print_fn = __add_function_decl("print_opt::" + LLVMType<T>::name(),
-                                      &print_optional<T>);
-  if (IsABIMemoryClass<T>::value) {
-    builder_.CreateCall(print_fn, {args[0]});
-  } else {
-    builder_.CreateCall(print_fn, {call});
-  }
 
   if (IsABIMemoryClass<T>::value) {
     return {args[0]};

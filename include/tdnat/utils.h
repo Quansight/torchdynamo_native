@@ -1,6 +1,8 @@
 #pragma once
 
 #include <ATen/core/TensorBody.h>
+#include <c10/core/Layout.h>
+#include <c10/core/MemoryFormat.h>
 #include <c10/core/Scalar.h>
 #include <c10/util/Optional.h>
 
@@ -12,6 +14,11 @@ namespace tdnat {
 template <typename T> struct IsOptionalType : public std::false_type {};
 template <typename T>
 struct IsOptionalType<c10::optional<T>> : public std::true_type {};
+
+template <typename T> struct IsInt8EnumType : public std::false_type {};
+template <> struct IsInt8EnumType<at::ScalarType> : public std::true_type {};
+template <> struct IsInt8EnumType<at::MemoryFormat> : public std::true_type {};
+template <> struct IsInt8EnumType<at::Layout> : public std::true_type {};
 
 // C++ types that are classified as MEMORY class in the SystemV ABI.
 // Some of the necessary conditions are:

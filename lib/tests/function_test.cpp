@@ -149,9 +149,8 @@ TEST(FunctionTest, SumTest) {
                    [&](long i) { return fn.build_integer<int64_t>(i); });
     auto dim_array = fn.build_arrayref_lit<int64_t>(dim_);
 
-    // auto type_ = fn.build_scalar_type(type);
-    // auto type_opt = fn.build_optional_lit<at::ScalarType>(type_);
-    auto type_opt = fn.build_optional<at::ScalarType>();
+    auto type_ = fn.build_scalar_type(type);
+    auto type_opt = fn.build_optional_lit<at::ScalarType>(type_);
 
     auto keepdim = fn.build_bool(true);
 
@@ -159,14 +158,10 @@ TEST(FunctionTest, SumTest) {
 
     fn.set_output(sum);
     fn.finalize();
-    fn.dump();
   }
 
   auto jitfn = fn.into_jit();
   auto result = jitfn.run({tensor});
-
-  std::cout << "Result: " << result[0] << std::endl;
-  std::cout << "Expect: " << expect << std::endl;
 
   ASSERT_EQ(result.size(), 1);
   ASSERT_TRUE(expect.equal(result[0]));

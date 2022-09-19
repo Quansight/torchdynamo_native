@@ -351,13 +351,20 @@ llvm::Type *get_or_create_type_by_name(llvm::Module &module) {
   }
 }
 
-// C++ types classifies as MEMORY by the SysV ABI classifier are
+// 1. C++ types classifies as MEMORY by the SysV ABI classifier are
 // passed on memory.
 //
 // In other words, they have to be copied to memory. Not only that
 // but, their new memory address must be passed as argument.
+//
+// 2. POD types smaller than 16-bytes may be coerced into up to 2
+// registers. In those cases, the type is treated as an N-bit integer.
 
-template <typename T, typename _Tp = void> struct LLVMArgType {};
+template <typename T, typename _Tp = void> struct LLVMArgType {
+  static llvm::Type *get(llvm::Module &module) {
+    return LLVMType<T>::get(module);
+  }
+};
 
 template <typename T>
 struct LLVMArgType<T, std::enable_if_t<IsABIMemoryClass<T>::value>> {
@@ -366,10 +373,35 @@ struct LLVMArgType<T, std::enable_if_t<IsABIMemoryClass<T>::value>> {
   }
 };
 
+// Covers optional values for 'int8_t' enumerations:
+//   - optional<ScalarType>
+//   - optional<MemoryFormat>
+//   - optional<Layout>
+//
+// Return type should be i16:
+//   - 8 bits for the 'bool' flag.
+//   - 8 bits for the enumeration.
 template <typename T>
-struct LLVMArgType<T, std::enable_if_t<!IsABIMemoryClass<T>::value>> {
+struct LLVMArgType<c10::optional<T>,
+                   std::enable_if_t<IsInt8EnumType<T>::value>> {
+  static llvm::Type *get(llvm::Module &module) {
+    return LLVMType<int16_t>::get(module);
+  }
+};
+
+// See above (2).
+
+template <typename T, typename _Tp = void> struct LLVMRetType {
   static llvm::Type *get(llvm::Module &module) {
     return LLVMType<T>::get(module);
+  }
+};
+
+template <typename T>
+struct LLVMRetType<c10::optional<T>,
+                   std::enable_if_t<IsInt8EnumType<T>::value>> {
+  static llvm::Type *get(llvm::Module &module) {
+    return LLVMType<int16_t>::get(module);
   }
 };
 

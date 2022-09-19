@@ -16,7 +16,7 @@ template <typename T> struct LLVMFunctionType {};
 template <typename Return, typename... Args>
 struct LLVMFunctionType<Return (*)(Args...)> {
   static llvm::FunctionType *get(llvm::Module &module) {
-    return llvm::FunctionType::get(LLVMType<Return>::get(module),
+    return llvm::FunctionType::get(LLVMRetType<Return>::get(module),
                                    {LLVMArgType<Args>::get(module)...}, false);
   }
 };
