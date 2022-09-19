@@ -68,6 +68,28 @@ Value Function::set_placeholder(int i, const std::string &name) {
   return {symbolmap_[name]};
 }
 
+std::vector<Value> Function::set_outputs(const std::vector<Value> &outputs) {
+  __check_finalized();
+
+  std::vector<Value> real_outputs;
+
+  for (size_t i = 0; i < data_.out_tensors_; i++) {
+    auto ptr = outputs[i].val_;
+    auto value = builder_.CreateLoad(__get_type<at::Tensor>(), ptr);
+
+    auto out_ptr = builder_.CreateGEP(fn_->getArg(1), builder_.getInt64(i));
+    builder_.CreateStore(value, out_ptr);
+
+    real_outputs.push_back({out_ptr});
+  }
+
+  return real_outputs;
+}
+
+Value Function::set_output(const Value &output) {
+  return set_outputs({output})[0];
+}
+
 Value Function::add_call(const std::string &symbolname,
                          const std::string &opname,
                          const std::vector<Value> &args) {
@@ -97,28 +119,6 @@ Value Function::add_call(const std::string &symbolname,
   }
 
   return {symbolmap_[symbolname]};
-}
-
-std::vector<Value> Function::set_outputs(const std::vector<Value> &outputs) {
-  __check_finalized();
-
-  std::vector<Value> real_outputs;
-
-  for (size_t i = 0; i < data_.out_tensors_; i++) {
-    auto ptr = outputs[i].val_;
-    auto value = builder_.CreateLoad(__get_type<at::Tensor>(), ptr);
-
-    auto out_ptr = builder_.CreateGEP(fn_->getArg(1), builder_.getInt64(i));
-    builder_.CreateStore(value, out_ptr);
-
-    real_outputs.push_back({out_ptr});
-  }
-
-  return real_outputs;
-}
-
-Value Function::set_output(const Value &output) {
-  return set_outputs({output})[0];
 }
 
 Value Function::build_bool(bool b) {

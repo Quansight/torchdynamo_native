@@ -58,11 +58,11 @@ public:
 
   Value set_placeholder(int i, const std::string &name);
 
-  Value add_call(const std::string &symbolname, const std::string &opname,
-                 const std::vector<Value> &args);
-
   std::vector<Value> set_outputs(const std::vector<Value> &outputs);
   Value set_output(const Value &output);
+
+  Value add_call(const std::string &symbolname, const std::string &opname,
+                 const std::vector<Value> &args);
 
   void dump();
   void finalize();
@@ -82,7 +82,7 @@ public:
   template <typename T> Value build_arrayref(const std::vector<Value> &v);
   template <typename T> Value build_arrayref_lit(const std::vector<Value> &v);
 
-  template <typename T> Value build_optional();
+  template <typename T> Value build_nullopt();
   template <typename T> Value build_optional(Value val);
   template <typename T> Value build_optional_lit(Value val);
 

@@ -94,7 +94,7 @@ Value Function::build_arrayref_lit(const std::vector<Value> &v) {
   return __build_arrayref<T>(v, /* from_literal= */ true);
 }
 
-template <typename T> Value Function::build_optional() {
+template <typename T> Value Function::build_nullopt() {
   __check_finalized();
   return __build_optional<T, factory::NullOpt<T>>();
 }

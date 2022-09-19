@@ -84,7 +84,7 @@ TEST(FunctionTest, IndexTest) {
     auto i1 = fn.set_placeholder(1, "i1");
     auto i2 = fn.set_placeholder(2, "i2");
 
-    auto nullopt = fn.build_optional<at::Tensor>();
+    auto nullopt = fn.build_nullopt<at::Tensor>();
     auto i1_opt = fn.build_optional<at::Tensor>(i1);
     auto i2_opt = fn.build_optional<at::Tensor>(i2);
     auto indices = fn.build_optional_tensorlist({nullopt, i1_opt, i2_opt});
