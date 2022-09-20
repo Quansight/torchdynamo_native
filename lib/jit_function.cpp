@@ -14,10 +14,10 @@ void JITFunction::run_out(at::ArrayRef<at::Tensor> in_tensors,
 
   TORCH_CHECK(in_tensors.size() == data_.in_tensors_,
               "Expected number of inputs mismatch actual number of inputs: ",
-              data_.in_tensors_, in_tensors.size());
+              data_.in_tensors_, " != ", in_tensors.size());
   TORCH_CHECK(out_tensors.size() == data_.out_tensors_,
               "Expected number of outputs mismatch actual number of outputs: ",
-              data_.out_tensors_, out_tensors.size());
+              data_.out_tensors_, " != ", out_tensors.size());
 
   if (cache_ == nullptr) {
     auto symbol = llvm::cantFail(jit_->lookup(data_.id_));

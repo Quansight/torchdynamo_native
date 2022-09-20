@@ -133,11 +133,6 @@ Value Function::build_bool(bool b) {
   return {builder_.getInt1(b)};
 }
 
-Value Function::build_scalar_type(at::ScalarType type) {
-  __check_finalized();
-  return {build_integer(static_cast<int8_t>(type))};
-}
-
 Value Function::build_optional_tensorlist(const std::vector<Value> &v) {
   using OptionalTensor = c10::optional<at::Tensor>;
 
@@ -162,9 +157,28 @@ Value Function::build_optional_tensorlist(const std::vector<Value> &v) {
   return {alloca_ret};
 }
 
+Value Function::build_scalar_type(at::ScalarType type) {
+  __check_finalized();
+  return {build_integer(static_cast<int8_t>(type))};
+}
+
 Value Function::build_scalar(int64_t n) {
   __check_finalized();
   return __build_scalar<int64_t>({builder_.getInt64(n)});
+}
+
+struct VectorAtTensor {
+  static std::string name() { return "vector_at_tensor"; }
+
+  static const at::Tensor &at(const std::vector<at::Tensor> &v, int64_t i) {
+    return v[i];
+  }
+};
+
+Value Function::build_vector_at_tensor(Value val, Value position) {
+  __check_finalized();
+  auto at_fn = __add_function_decl(VectorAtTensor::name(), &VectorAtTensor::at);
+  return {builder_.CreateCall(at_fn, {val.val_, position.val_})};
 }
 
 void Function::dump() { mod_->print(llvm::outs(), nullptr); }
