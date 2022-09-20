@@ -72,11 +72,13 @@ public:
 
   Value build_bool(bool b);
 
-  Value build_scalar_type(at::ScalarType type);
-
   Value build_optional_tensorlist(const std::vector<Value> &v);
 
+  Value build_scalar_type(at::ScalarType type);
+
   Value build_scalar(int64_t n);
+
+  Value build_vector_at_tensor(Value val, Value position);
 
   template <typename T> Value build_integer(T n);
 

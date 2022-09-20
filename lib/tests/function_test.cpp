@@ -3,13 +3,14 @@
 
 #include <tdnat/function.h>
 
+#include <ATen/core/Formatting.h>
 #include <ATen/ops/add.h>
 #include <ATen/ops/argmin.h>
 #include <ATen/ops/cat.h>
+#include <ATen/ops/chunk.h>
 #include <ATen/ops/index.h>
 #include <ATen/ops/randint.h>
 #include <ATen/ops/sum.h>
-#include <ATen/core/Formatting.h>
 
 #include <algorithm>
 #include <iterator>
@@ -154,7 +155,8 @@ TEST(FunctionTest, SumTest) {
 
     auto keepdim = fn.build_bool(true);
 
-    auto sum = fn.add_call("sum", "sum.dim_IntList", {tensor, dim_array, keepdim, type_opt});
+    auto sum = fn.add_call("sum", "sum.dim_IntList",
+                           {tensor, dim_array, keepdim, type_opt});
 
     fn.set_output(sum);
     fn.finalize();
@@ -165,4 +167,39 @@ TEST(FunctionTest, SumTest) {
 
   ASSERT_EQ(result.size(), 1);
   ASSERT_TRUE(expect.equal(result[0]));
+}
+
+TEST(FunctionTest, ChunkTest) {
+  auto data = tdnat::FunctionData{"aten_chunk", 1, 4};
+  tdnat::Function fn(data);
+
+  auto tensor = at::randint(10, {10, 16});
+  auto chunks = 4;
+  auto dim = 1;
+  auto expect = at::chunk(tensor, chunks, dim);
+
+  {
+    auto tensor = fn.set_placeholder(0, "tensor");
+
+    auto chunks_ = fn.build_integer<int64_t>(chunks);
+    auto dim_ = fn.build_integer<int64_t>(dim);
+
+    auto chunk = fn.add_call("chunk", "chunk", {tensor, chunks_, dim_});
+
+    std::vector<tdnat::Value> values;
+    for (size_t i = 0; i < chunks; i++) {
+      values.push_back(fn.build_vector_at_tensor(chunk, fn.build_integer(i)));
+    }
+
+    fn.set_outputs(values);
+    fn.finalize();
+  }
+
+  auto jitfn = fn.into_jit();
+  auto result = jitfn.run({tensor});
+
+  ASSERT_EQ(result.size(), chunks);
+  for (size_t i = 0; i < chunks; i++) {
+    ASSERT_TRUE(expect[i].equal(result[i]));
+  }
 }

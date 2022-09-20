@@ -1,10 +1,50 @@
 #include <tdnat/function.h>
 #include <tdnat/ops.h>
 
-#include <pybind11/pybind11.h>
+#include <c10/util/Exception.h>
+#include <torch/csrc/Dtype.h>
 #include <torch/csrc/utils/pybind.h>
 
+#include <pybind11/pybind11.h>
+
 using namespace tdnat;
+
+namespace pybind11 {
+namespace detail {
+
+template <> struct type_caster<at::ScalarType> {
+public:
+  PYBIND11_TYPE_CASTER(at::ScalarType, _("at::ScalarType"));
+
+  bool load(handle src, bool) {
+    PyObject *source = src.ptr();
+
+    if (!THPDtype_Check(source) && !THPPythonScalarType_Check(source)) {
+      return false;
+    }
+
+    if (source == (PyObject *)&PyFloat_Type) {
+      value = at::ScalarType::Double;
+    } else if (source == (PyObject *)&PyBool_Type) {
+      value = at::ScalarType::Bool;
+    } else if (source == (PyObject *)&PyLong_Type) {
+      value = at::ScalarType::Long;
+    } else {
+      auto dtype = reinterpret_cast<THPDtype *>(source);
+      value = dtype->scalar_type;
+    }
+
+    return true;
+  }
+
+  static handle cast(at::ScalarType src, return_value_policy /* policy */,
+                     handle /* parent */) {
+    TORCH_CHECK(false, "pybind11 casting not implemented for at::ScalarType.");
+  }
+};
+
+} // namespace detail
+} // namespace pybind11
 
 static Function function_init(const std::string id, size_t in_tensors,
                               size_t out_tensors) {
@@ -41,9 +81,11 @@ PYBIND11_MODULE(_C, m) {
       .def("finalize", &Function::finalize)
 
       .def("build_bool", &Function::build_bool)
-      .def("build_scalar_type", &Function::build_scalar_type)
       .def("build_optional_tensorlist", &Function::build_optional_tensorlist)
+      .def("build_scalar_type", &Function::build_scalar_type)
       .def("build_scalar_int", &Function::build_scalar)
+      .def("build_vector_at_tensor", &Function::build_vector_at_tensor)
+
       .def("build_integer", &Function::build_integer<int64_t>)
 
       .def("build_arrayref_int", &Function::build_arrayref<int64_t>)
@@ -61,7 +103,9 @@ PYBIND11_MODULE(_C, m) {
 
       .def("into_jit", &Function::into_jit);
 
-  py::class_<JITFunction>(m, "JITFunction").def("__call__", &jitfunction_run);
+  py::class_<JITFunction>(m, "JITFunction")
+      .def("run", &jitfunction_run)
+      .def("__call__", &jitfunction_run);
 }
 
 } // namespace
