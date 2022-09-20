@@ -9,7 +9,7 @@ using namespace tdnat;
 JITFunction::JITFunction(llvm::orc::LLJIT *jit, const FunctionData &data)
     : jit_(jit), data_(data) {}
 
-void JITFunction::run(at::ArrayRef<at::Tensor> in_tensors,
+void JITFunction::run_out(at::ArrayRef<at::Tensor> in_tensors,
                       at::ArrayRef<at::Tensor> out_tensors) {
 
   TORCH_CHECK(in_tensors.size() == data_.in_tensors_,
@@ -29,6 +29,6 @@ void JITFunction::run(at::ArrayRef<at::Tensor> in_tensors,
 
 std::vector<at::Tensor> JITFunction::run(at::ArrayRef<at::Tensor> in_tensors) {
   std::vector<at::Tensor> out_tensors(data_.out_tensors_);
-  run(in_tensors, out_tensors);
+  run_out(in_tensors, out_tensors);
   return out_tensors;
 }

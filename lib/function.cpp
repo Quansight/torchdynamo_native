@@ -60,6 +60,13 @@ Function::Function(const FunctionData &data)
   builder_.SetInsertPoint(llvm::BasicBlock::Create(*ctx_, "entry", fn_));
 }
 
+Function::Function(Function &&fn)
+    : data_(fn.data_), ctx_(fn.ctx_.release()), mod_(fn.mod_.release()),
+      fn_(fn.fn_), builder_(*ctx_), symbolmap_(fn.symbolmap_),
+      fnaddrmap_(fn.fnaddrmap_), finalized_(false) {
+  builder_.SetInsertPoint(&fn_->getEntryBlock());
+}
+
 Value Function::set_placeholder(int i, const std::string &name) {
   __check_finalized();
 

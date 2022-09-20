@@ -55,6 +55,7 @@ private:
 
 public:
   Function(const FunctionData &data);
+  Function(Function &&fn);
 
   Value set_placeholder(int i, const std::string &name);
 
@@ -111,8 +112,8 @@ private:
 struct JITFunction {
   JITFunction(llvm::orc::LLJIT *jit, const FunctionData &data);
 
-  void run(at::ArrayRef<at::Tensor> in_tensors,
-           at::ArrayRef<at::Tensor> out_tensors);
+  void run_out(at::ArrayRef<at::Tensor> in_tensors,
+               at::ArrayRef<at::Tensor> out_tensors);
 
   std::vector<at::Tensor> run(at::ArrayRef<at::Tensor> in_tensors);
 
