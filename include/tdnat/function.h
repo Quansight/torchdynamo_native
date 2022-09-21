@@ -14,7 +14,7 @@
 #include <type_traits>
 
 namespace tdnat {
-struct JITFunction;
+class JITFunction;
 
 struct Value {
   llvm::Value *val_;
@@ -26,7 +26,7 @@ struct FunctionData {
   size_t out_tensors_;
 };
 
-struct Function {
+class Function {
 private:
   // Declares a given extern function to the module, so that it
   // can be called by the JIT function.
@@ -111,7 +111,7 @@ private:
   bool finalized_;
 };
 
-struct JITFunction {
+class JITFunction {
   JITFunction(llvm::orc::LLJIT *jit, const FunctionData &data);
 
   void run_out(at::ArrayRef<at::Tensor> in_tensors,
