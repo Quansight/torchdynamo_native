@@ -13,7 +13,8 @@
 #include <memory>
 #include <type_traits>
 
-namespace tdnat {
+namespace tdnat
+{
 class JITFunction;
 
 struct Value {
@@ -26,20 +27,22 @@ struct FunctionData {
   size_t out_tensors_;
 };
 
-class Function {
+class Function
+{
 private:
   // Declares a given extern function to the module, so that it
   // can be called by the JIT function.
   template <typename Return, typename... Args>
-  llvm::Function *__add_function_decl(const std::string &name,
-                                      Return (*fn)(Args...));
+  llvm::Function *__add_function_decl(const std::string &name, Return (*fn)(Args...));
 
-  template <typename Factory> llvm::Function *__add_factory_decl();
+  template <typename Factory>
+  llvm::Function *__add_factory_decl();
 
   // For ATenOpRef, we don't have type information.
   llvm::Function *__add_aten_op_decl(ATenOpRef ref);
 
-  template <typename T> Value __build_scalar(Value val);
+  template <typename T>
+  Value __build_scalar(Value val);
 
   template <typename T, typename Factory>
   Value __build_optional(c10::optional<Value> val = c10::nullopt);
@@ -51,7 +54,8 @@ private:
   // 'expected' is true (false).
   void __check_finalized(bool expected = false);
 
-  template <typename T> llvm::Type *__get_type();
+  template <typename T>
+  llvm::Type *__get_type();
 
 public:
   Function(const FunctionData &data);
@@ -62,8 +66,11 @@ public:
   std::vector<Value> set_outputs(const std::vector<Value> &outputs);
   Value set_output(const Value &output);
 
-  Value add_call(const std::string &symbolname, const std::string &opname,
-                 const std::vector<Value> &args);
+  Value add_call(
+      const std::string &symbolname,
+      const std::string &opname,
+      const std::vector<Value> &args
+  );
 
   void dump();
   void finalize();
@@ -80,14 +87,20 @@ public:
 
   Value build_vector_at_tensor(Value val, Value position);
 
-  template <typename T> Value build_integer(T n);
+  template <typename T>
+  Value build_integer(T n);
 
-  template <typename T> Value build_arrayref(const std::vector<Value> &v);
-  template <typename T> Value build_arrayref_lit(const std::vector<Value> &v);
+  template <typename T>
+  Value build_arrayref(const std::vector<Value> &v);
+  template <typename T>
+  Value build_arrayref_lit(const std::vector<Value> &v);
 
-  template <typename T> Value build_nullopt();
-  template <typename T> Value build_optional(Value val);
-  template <typename T> Value build_optional_lit(Value val);
+  template <typename T>
+  Value build_nullopt();
+  template <typename T>
+  Value build_optional(Value val);
+  template <typename T>
+  Value build_optional_lit(Value val);
 
 private:
   FunctionData data_;
@@ -111,13 +124,13 @@ private:
   bool finalized_;
 };
 
-class JITFunction {
+class JITFunction
+{
+public:
   JITFunction(llvm::orc::LLJIT *jit, const FunctionData &data);
 
-  void run_out(at::ArrayRef<at::Tensor> in_tensors,
-               at::ArrayRef<at::Tensor> out_tensors);
-
   std::vector<at::Tensor> run(at::ArrayRef<at::Tensor> in_tensors);
+  void run_out(at::ArrayRef<at::Tensor> in_tensors, at::ArrayRef<at::Tensor> out_tensors);
 
 private:
   std::unique_ptr<llvm::orc::LLJIT> jit_;

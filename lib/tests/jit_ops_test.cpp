@@ -33,7 +33,8 @@ static const char *WrappedFn = "wrapped_function";
 static const char *EntryBlock = "entry";
 
 template <typename Return, typename... Args>
-std::unique_ptr<llvm::orc::LLJIT> create_jit(Return (*fn)(Args...)) {
+std::unique_ptr<llvm::orc::LLJIT> create_jit(Return (*fn)(Args...))
+{
   using AttrKind = llvm::Attribute::AttrKind;
   using type_ptr = Return (*)(Args...);
   using abi_type_ptr = typename ABIFunctionType<type_ptr>::type;
@@ -44,23 +45,31 @@ std::unique_ptr<llvm::orc::LLJIT> create_jit(Return (*fn)(Args...)) {
 
   auto entry_fn = llvm::Function::Create(
       LLVMFunctionType<abi_type_ptr>::get(*mod),
-      llvm::Function::ExternalLinkage, EntryFn, mod.get());
+      llvm::Function::ExternalLinkage,
+      EntryFn,
+      mod.get()
+  );
 
   auto wrapped_fn = llvm::Function::Create(
       LLVMFunctionType<abi_type_ptr>::get(*mod),
-      llvm::Function::ExternalLinkage, WrappedFn, mod.get());
+      llvm::Function::ExternalLinkage,
+      WrappedFn,
+      mod.get()
+  );
 
   add_attributes<Return, Args...>(entry_fn);
   add_attributes<Return, Args...>(wrapped_fn);
 
-  auto bb =
-      llvm::BasicBlock::Create(entry_fn->getContext(), EntryBlock, entry_fn);
+  auto bb = llvm::BasicBlock::Create(entry_fn->getContext(), EntryBlock, entry_fn);
   llvm::IRBuilder<> builder(bb);
 
   std::vector<llvm::Value *> arguments;
-  std::transform(entry_fn->arg_begin(), entry_fn->arg_end(),
-                 std::back_inserter(arguments),
-                 [](llvm::Argument &arg) { return (llvm::Value *)&arg; });
+  std::transform(
+      entry_fn->arg_begin(),
+      entry_fn->arg_end(),
+      std::back_inserter(arguments),
+      [](llvm::Argument &arg) { return (llvm::Value *)&arg; }
+  );
 
   builder.CreateCall(wrapped_fn, arguments);
   builder.CreateRetVoid();
@@ -68,15 +77,15 @@ std::unique_ptr<llvm::orc::LLJIT> create_jit(Return (*fn)(Args...)) {
   llvm::verifyModule(*mod, &llvm::errs());
   llvm::cantFail(jit->addIRModule({std::move(mod), std::move(ctx)}));
   llvm::cantFail(jit->define(llvm::orc::absoluteSymbols(
-      {{jit->mangleAndIntern(WrappedFn),
-        llvm::JITEvaluatedSymbol::fromPointer(fn)}})));
+      {{jit->mangleAndIntern(WrappedFn), llvm::JITEvaluatedSymbol::fromPointer(fn)}}
+  )));
 
   return jit;
 }
 
-TEST(JITTest, AddTest) {
-  using FnType = at::Tensor (*)(const at::Tensor &, const at::Tensor &,
-                                const at::Scalar &);
+TEST(JITTest, AddTest)
+{
+  using FnType = at::Tensor (*)(const at::Tensor &, const at::Tensor &, const at::Scalar &);
 
   auto jit = create_jit((FnType)at::add);
   auto symbol = llvm::cantFail(jit->lookup(WrappedFn));
@@ -92,7 +101,8 @@ TEST(JITTest, AddTest) {
   ASSERT_TRUE(expect.equal(result));
 }
 
-TEST(JITTest, CatTest) {
+TEST(JITTest, CatTest)
+{
   using FnType = at::Tensor (*)(at::ArrayRef<at::Tensor>, int64_t);
 
   auto jit = create_jit((FnType)at::cat);
@@ -108,9 +118,9 @@ TEST(JITTest, CatTest) {
   ASSERT_TRUE(expect.equal(result));
 }
 
-TEST(JITTest, IndexTest) {
-  using FnType = at::Tensor (*)(const at::Tensor &,
-                                const c10::List<c10::optional<at::Tensor>> &);
+TEST(JITTest, IndexTest)
+{
+  using FnType = at::Tensor (*)(const at::Tensor &, const c10::List<c10::optional<at::Tensor>> &);
 
   auto jit = create_jit((FnType)at::index);
   auto symbol = llvm::cantFail(jit->lookup(WrappedFn));
@@ -127,9 +137,9 @@ TEST(JITTest, IndexTest) {
   ASSERT_TRUE(expect.equal(result));
 }
 
-TEST(JITTest, ArgMinTest) {
-  using FnType =
-      at::Tensor (*)(const at::Tensor &, c10::optional<int64_t>, bool);
+TEST(JITTest, ArgMinTest)
+{
+  using FnType = at::Tensor (*)(const at::Tensor &, c10::optional<int64_t>, bool);
 
   auto jit = create_jit((FnType)at::argmin);
   auto symbol = llvm::cantFail(jit->lookup(WrappedFn));
@@ -145,9 +155,10 @@ TEST(JITTest, ArgMinTest) {
   ASSERT_TRUE(expect.equal(result));
 }
 
-TEST(JITTest, SumTest) {
-  using FnType = at::Tensor (*)(const at::Tensor &, at::IntArrayRef, bool,
-                                c10::optional<at::ScalarType>);
+TEST(JITTest, SumTest)
+{
+  using FnType =
+      at::Tensor (*)(const at::Tensor &, at::IntArrayRef, bool, c10::optional<at::ScalarType>);
 
   auto jit = create_jit((FnType)at::sum);
   auto symbol = llvm::cantFail(jit->lookup(WrappedFn));
@@ -164,9 +175,9 @@ TEST(JITTest, SumTest) {
   ASSERT_TRUE(expect.equal(result));
 }
 
-TEST(JITTest, ChunkTest) {
-  using FnType =
-      std::vector<at::Tensor> (*)(const at::Tensor &, int64_t, int64_t);
+TEST(JITTest, ChunkTest)
+{
+  using FnType = std::vector<at::Tensor> (*)(const at::Tensor &, int64_t, int64_t);
 
   auto jit = create_jit((FnType)at::chunk);
   auto symbol = llvm::cantFail(jit->lookup(WrappedFn));

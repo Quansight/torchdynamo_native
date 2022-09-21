@@ -15,7 +15,8 @@
 #include <algorithm>
 #include <iterator>
 
-TEST(FunctionTest, AddTest) {
+TEST(FunctionTest, AddTest)
+{
   auto data = tdnat::FunctionData{"aten_add", 2, 1};
   tdnat::Function fn(data);
 
@@ -42,7 +43,8 @@ TEST(FunctionTest, AddTest) {
   ASSERT_TRUE(expect.equal(result[0]));
 }
 
-TEST(FunctionTest, CatTest) {
+TEST(FunctionTest, CatTest)
+{
   auto data = tdnat::FunctionData{"aten_cat", 2, 1};
   tdnat::Function fn(data);
 
@@ -70,7 +72,8 @@ TEST(FunctionTest, CatTest) {
   ASSERT_TRUE(expect.equal(result[0]));
 }
 
-TEST(FunctionTest, IndexTest) {
+TEST(FunctionTest, IndexTest)
+{
   auto data = tdnat::FunctionData{"aten_index", 3, 1};
   tdnat::Function fn(data);
 
@@ -103,7 +106,8 @@ TEST(FunctionTest, IndexTest) {
   ASSERT_TRUE(expect.equal(result[0]));
 }
 
-TEST(FunctionTest, ArgMinTest) {
+TEST(FunctionTest, ArgMinTest)
+{
   auto data = tdnat::FunctionData{"aten_argmin", 1, 1};
   tdnat::Function fn(data);
 
@@ -132,7 +136,8 @@ TEST(FunctionTest, ArgMinTest) {
   ASSERT_TRUE(expect.equal(result[0]));
 }
 
-TEST(FunctionTest, SumTest) {
+TEST(FunctionTest, SumTest)
+{
   auto data = tdnat::FunctionData{"aten_sum", 1, 1};
   tdnat::Function fn(data);
 
@@ -146,8 +151,9 @@ TEST(FunctionTest, SumTest) {
     auto tensor = fn.set_placeholder(0, "tensor");
 
     auto dim_ = std::vector<tdnat::Value>{};
-    std::transform(dim.begin(), dim.end(), std::back_inserter(dim_),
-                   [&](long i) { return fn.build_integer<int64_t>(i); });
+    std::transform(dim.begin(), dim.end(), std::back_inserter(dim_), [&](long i) {
+      return fn.build_integer<int64_t>(i);
+    });
     auto dim_array = fn.build_arrayref_lit<int64_t>(dim_);
 
     auto type_ = fn.build_scalar_type(type);
@@ -155,8 +161,7 @@ TEST(FunctionTest, SumTest) {
 
     auto keepdim = fn.build_bool(true);
 
-    auto sum = fn.add_call("sum", "sum.dim_IntList",
-                           {tensor, dim_array, keepdim, type_opt});
+    auto sum = fn.add_call("sum", "sum.dim_IntList", {tensor, dim_array, keepdim, type_opt});
 
     fn.set_output(sum);
     fn.finalize();
@@ -169,7 +174,8 @@ TEST(FunctionTest, SumTest) {
   ASSERT_TRUE(expect.equal(result[0]));
 }
 
-TEST(FunctionTest, ChunkTest) {
+TEST(FunctionTest, ChunkTest)
+{
   auto data = tdnat::FunctionData{"aten_chunk", 1, 4};
   tdnat::Function fn(data);
 
