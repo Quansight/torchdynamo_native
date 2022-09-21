@@ -6,9 +6,9 @@
 
 using namespace tdnat;
 
-JITFunction::JITFunction(llvm::orc::LLJIT *jit, const FunctionData &data) :
+JITFunction::JITFunction(llvm::orc::LLJIT *jit, FunctionData data) :
     jit_(jit),
-    data_(data)
+    data_(std::move(data))
 {
 }
 
@@ -39,6 +39,8 @@ void JITFunction::run_out(at::ArrayRef<at::Tensor> in_tensors, at::ArrayRef<at::
 
   if (cache_ == nullptr) {
     auto symbol = llvm::cantFail(jit_->lookup(data_.id_));
+
+    // NOLINTNEXTLINE(performance-no-int-to-ptr)
     cache_ = reinterpret_cast<RunFnType>(symbol.getAddress());
   }
 

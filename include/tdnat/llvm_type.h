@@ -43,7 +43,7 @@ llvm::Type *get_or_create_type_by_name(llvm::Module &module);
 //     Creates the struct with its name. This method should be
 //     called before get().
 
-template <typename T, typename _Tp = void>
+template <typename T, typename Tp = void>
 struct LLVMType {
 };
 
@@ -75,7 +75,7 @@ struct LLVMType<
     std::enable_if_t<std::numeric_limits<T>::is_integer && !std::is_same<T, bool>::value>> {
   static std::string name()
   {
-    size_t bits = sizeof(T) * 8;
+    size_t bits = sizeof(T) * 8; // NOLINT(cppcoreguidelines-avoid-magic-numbers)
     if (std::is_integral<T>::value) {
       return std::string("i") + std::to_string(bits);
     } else {
@@ -85,6 +85,7 @@ struct LLVMType<
 
   static llvm::Type *get(llvm::Module &module)
   {
+    // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers)
     return llvm::Type::getIntNTy(module.getContext(), sizeof(T) * 8);
   }
 };
@@ -482,7 +483,7 @@ llvm::Type *get_or_create_type_by_name(llvm::Module &module)
 // 2. POD types smaller than 16-bytes may be coerced into up to 2
 // registers. In those cases, the type is treated as an N-bit integer.
 
-template <typename T, typename _Tp = void>
+template <typename T, typename Tp = void>
 struct LLVMArgType {
   static llvm::Type *get(llvm::Module &module)
   {
@@ -516,7 +517,7 @@ struct LLVMArgType<c10::optional<T>, std::enable_if_t<IsInt8EnumType<T>::value>>
 
 // See above (2).
 
-template <typename T, typename _Tp = void>
+template <typename T, typename Tp = void>
 struct LLVMRetType {
   static llvm::Type *get(llvm::Module &module)
   {

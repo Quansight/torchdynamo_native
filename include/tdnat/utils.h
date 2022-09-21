@@ -41,7 +41,7 @@ struct IsInt8EnumType<at::Layout> : public std::true_type {
 // c10::Scalar, for example, is also classified as MEMORY.
 // However, that is because of its size.
 
-template <typename T, typename _Tp = void>
+template <typename T, typename Tp = void>
 struct IsABIMemoryClass : public std::false_type {
 };
 
@@ -75,7 +75,7 @@ struct IsABIMemoryClass<at::Scalar> : public std::true_type {
 //   - Returns the address of the return value (i.e. same as the 1st
 //     argument)
 
-template <typename T, typename _Tp = void>
+template <typename T, typename Tp = void>
 struct ABIFunctionType {
 };
 

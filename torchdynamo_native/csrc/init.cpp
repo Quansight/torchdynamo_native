@@ -17,6 +17,7 @@ namespace detail
 template <>
 struct type_caster<at::ScalarType> {
 public:
+  // NOLINTNEXTLINE
   PYBIND11_TYPE_CASTER(at::ScalarType, _("at::ScalarType"));
 
   bool load(handle src, bool)
@@ -27,11 +28,11 @@ public:
       return false;
     }
 
-    if (source == (PyObject *)&PyFloat_Type) {
+    if (source == reinterpret_cast<PyObject *>(&PyFloat_Type)) {
       value = at::ScalarType::Double;
-    } else if (source == (PyObject *)&PyBool_Type) {
+    } else if (source == reinterpret_cast<PyObject *>(&PyBool_Type)) {
       value = at::ScalarType::Bool;
-    } else if (source == (PyObject *)&PyLong_Type) {
+    } else if (source == reinterpret_cast<PyObject *>(&PyLong_Type)) {
       value = at::ScalarType::Long;
     } else {
       auto dtype = reinterpret_cast<THPDtype *>(source);
@@ -50,7 +51,7 @@ public:
 } // namespace detail
 } // namespace pybind11
 
-static Function function_init(const std::string id, size_t in_tensors, size_t out_tensors)
+static Function function_init(const std::string &id, size_t in_tensors, size_t out_tensors)
 {
   return {{id, in_tensors, out_tensors}};
 }
@@ -64,6 +65,7 @@ jitfunction_run(JITFunction &jitfn, const std::vector<at::Tensor> &tensors)
 namespace
 {
 
+// NOLINTNEXTLINE
 PYBIND11_MODULE(_C, m)
 {
   // Initialize global registry + LLVM components.

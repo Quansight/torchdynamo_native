@@ -1,3 +1,4 @@
+#include <memory>
 #include <tdnat/function.h>
 #include <tdnat/llvm_function_type.h>
 
@@ -14,7 +15,7 @@
 
 using namespace tdnat;
 
-llvm::Function *Function::__add_aten_op_decl(ATenOpRef ref)
+llvm::Function *Function::_add_aten_op_decl(ATenOpRef ref)
 {
   if (fnaddrmap_.find(ref.name()) == fnaddrmap_.end()) {
     fnaddrmap_[ref.name()] = ref.cpu();
@@ -29,7 +30,7 @@ llvm::Function *Function::__add_aten_op_decl(ATenOpRef ref)
   return mod_->getFunction(ref.name());
 }
 
-void Function::__check_finalized(bool expected)
+void Function::_check_finalized(bool expected)
 {
   if (finalized_ != expected) {
     std::ostringstream msg;
@@ -44,16 +45,15 @@ void Function::__check_finalized(bool expected)
   }
 }
 
-Function::Function(const FunctionData &data) :
-    data_(data),
+Function::Function(FunctionData data) :
+    data_(std::move(data)),
     ctx_(new llvm::LLVMContext()),
-    mod_(new llvm::Module(data_.id_, *ctx_)),
     builder_(*ctx_),
     finalized_(false)
 {
   // Instantiate LLVM module.
   auto mod_id = std::string("Module_for_") + data_.id_;
-  mod_.reset(new llvm::Module(mod_id, *ctx_));
+  mod_ = std::make_unique<llvm::Module>(mod_id, *ctx_);
 
   // The function signature will be:
   //
@@ -72,14 +72,14 @@ Function::Function(const FunctionData &data) :
   builder_.SetInsertPoint(llvm::BasicBlock::Create(*ctx_, "entry", fn_));
 }
 
-Function::Function(Function &&fn) :
-    data_(fn.data_),
+Function::Function(Function &&fn) noexcept :
+    data_(std::move(fn.data_)),
     ctx_(fn.ctx_.release()),
     mod_(fn.mod_.release()),
     fn_(fn.fn_),
     builder_(*ctx_),
-    symbolmap_(fn.symbolmap_),
-    fnaddrmap_(fn.fnaddrmap_),
+    symbolmap_(std::move(fn.symbolmap_)),
+    fnaddrmap_(std::move(fn.fnaddrmap_)),
     finalized_(false)
 {
   builder_.SetInsertPoint(&fn_->getEntryBlock());
@@ -87,7 +87,7 @@ Function::Function(Function &&fn) :
 
 Value Function::set_placeholder(int i, const std::string &name)
 {
-  __check_finalized();
+  _check_finalized();
 
   // Get the i-th input tensor.
   symbolmap_[name] = builder_.CreateGEP(fn_->getArg(0), builder_.getInt64(i));
@@ -96,13 +96,13 @@ Value Function::set_placeholder(int i, const std::string &name)
 
 std::vector<Value> Function::set_outputs(const std::vector<Value> &outputs)
 {
-  __check_finalized();
+  _check_finalized();
 
   std::vector<Value> real_outputs;
 
   for (size_t i = 0; i < data_.out_tensors_; i++) {
     auto ptr = outputs[i].val_;
-    auto value = builder_.CreateLoad(__get_type<at::Tensor>(), ptr);
+    auto value = builder_.CreateLoad(_get_type<at::Tensor>(), ptr);
 
     auto out_ptr = builder_.CreateGEP(fn_->getArg(1), builder_.getInt64(i));
     builder_.CreateStore(value, out_ptr);
@@ -124,13 +124,13 @@ Value Function::add_call(
     const std::vector<Value> &args
 )
 {
-  __check_finalized();
+  _check_finalized();
 
   auto opref_ = get_aten_op(opname);
   TORCH_CHECK(opref_.has_value(), "PyTorch operation not registered: ", opname);
 
   auto opref = opref_.value();
-  auto opfn = __add_aten_op_decl(opref);
+  auto opfn = _add_aten_op_decl(opref);
 
   auto values = std::vector<llvm::Value *>();
   std::transform(args.begin(), args.end(), std::back_inserter(values), [](Value arg) {
@@ -155,7 +155,7 @@ Value Function::add_call(
 
 Value Function::build_bool(bool b)
 {
-  __check_finalized();
+  _check_finalized();
   return {builder_.getInt1(b)};
 }
 
@@ -163,17 +163,17 @@ Value Function::build_optional_tensorlist(const std::vector<Value> &v)
 {
   using OptionalTensor = c10::optional<at::Tensor>;
 
-  __check_finalized();
+  _check_finalized();
 
-  auto optional_tensorlist_fn = __add_factory_decl<factory::OptionalTensorList>();
+  auto optional_tensorlist_fn = _add_factory_decl<factory::OptionalTensorList>();
 
   auto size = build_integer(v.size()).val_;
-  auto alloca = builder_.CreateAlloca(__get_type<OptionalTensor>(), size);
-  auto alloca_ret = builder_.CreateAlloca(__get_type<c10::List<OptionalTensor>>());
+  auto alloca = builder_.CreateAlloca(_get_type<OptionalTensor>(), size);
+  auto alloca_ret = builder_.CreateAlloca(_get_type<c10::List<OptionalTensor>>());
 
   for (size_t i = 0; i < v.size(); i++) {
     auto ptr = v[i].val_;
-    auto load = builder_.CreateLoad(__get_type<OptionalTensor>(), ptr);
+    auto load = builder_.CreateLoad(_get_type<OptionalTensor>(), ptr);
     auto elem_ptr = builder_.CreateGEP(alloca, builder_.getInt64(i));
     builder_.CreateStore(load, elem_ptr);
   }
@@ -184,14 +184,14 @@ Value Function::build_optional_tensorlist(const std::vector<Value> &v)
 
 Value Function::build_scalar_type(at::ScalarType type)
 {
-  __check_finalized();
+  _check_finalized();
   return {build_integer(static_cast<int8_t>(type))};
 }
 
 Value Function::build_scalar(int64_t n)
 {
-  __check_finalized();
-  return __build_scalar<int64_t>({builder_.getInt64(n)});
+  _check_finalized();
+  return _build_scalar<int64_t>({builder_.getInt64(n)});
 }
 
 struct VectorAtTensor {
@@ -208,8 +208,8 @@ struct VectorAtTensor {
 
 Value Function::build_vector_at_tensor(Value val, Value position)
 {
-  __check_finalized();
-  auto at_fn = __add_function_decl(VectorAtTensor::name(), &VectorAtTensor::at);
+  _check_finalized();
+  auto at_fn = _add_function_decl(VectorAtTensor::name(), &VectorAtTensor::at);
   return {builder_.CreateCall(at_fn, {val.val_, position.val_})};
 }
 
@@ -220,7 +220,7 @@ void Function::dump()
 
 void Function::finalize()
 {
-  __check_finalized();
+  _check_finalized();
 
   builder_.CreateRetVoid();
   finalized_ = true;
@@ -234,7 +234,7 @@ void Function::finalize()
 
 JITFunction Function::into_jit()
 {
-  __check_finalized(true);
+  _check_finalized(true);
 
   auto id = fn_->getName();
   auto jit = llvm::cantFail(llvm::orc::LLJITBuilder().create());

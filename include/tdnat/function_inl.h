@@ -2,7 +2,7 @@ namespace tdnat
 {
 
 template <typename Return, typename... Args>
-llvm::Function *Function::__add_function_decl(const std::string &name, Return (*fn)(Args...))
+llvm::Function *Function::_add_function_decl(const std::string &name, Return (*fn)(Args...))
 {
   if (fnaddrmap_.find(name) == fnaddrmap_.end()) {
     fnaddrmap_[name] = reinterpret_cast<Addr>(fn);
@@ -18,17 +18,17 @@ llvm::Function *Function::__add_function_decl(const std::string &name, Return (*
 }
 
 template <typename Factory>
-llvm::Function *Function::__add_factory_decl()
+llvm::Function *Function::_add_factory_decl()
 {
-  return __add_function_decl(Factory::name(), &Factory::create);
+  return _add_function_decl(Factory::name(), &Factory::create);
 }
 
 template <typename T>
-Value Function::__build_scalar(Value val)
+Value Function::_build_scalar(Value val)
 {
-  auto scalar_fn = __add_factory_decl<factory::Scalar<T>>();
+  auto scalar_fn = _add_factory_decl<factory::Scalar<T>>();
 
-  auto alloca = builder_.CreateAlloca(__get_type<at::Scalar>());
+  auto alloca = builder_.CreateAlloca(_get_type<at::Scalar>());
   alloca->setAlignment(llvm::Align(alignof(at::Scalar)));
 
   builder_.CreateCall(scalar_fn, {alloca, val.val_});
@@ -36,14 +36,14 @@ Value Function::__build_scalar(Value val)
 }
 
 template <typename T, typename Factory>
-Value Function::__build_optional(c10::optional<Value> val)
+Value Function::_build_optional(c10::optional<Value> val)
 {
-  auto fn = __add_factory_decl<Factory>();
+  auto fn = _add_factory_decl<Factory>();
 
   std::vector<llvm::Value *> args;
 
   if (IsABIMemoryClass<T>::value) {
-    auto alloca = builder_.CreateAlloca(__get_type<c10::optional<T>>());
+    auto alloca = builder_.CreateAlloca(_get_type<c10::optional<T>>());
     args.push_back(alloca);
   }
 
@@ -61,12 +61,12 @@ Value Function::__build_optional(c10::optional<Value> val)
 }
 
 template <typename T>
-Value Function::__build_arrayref(const std::vector<Value> &vals, bool from_literal)
+Value Function::_build_arrayref(const std::vector<Value> &vals, bool from_literal)
 {
-  auto fn = __add_factory_decl<factory::ArrayRef<T>>();
+  auto fn = _add_factory_decl<factory::ArrayRef<T>>();
 
   auto size = build_integer(vals.size()).val_;
-  auto alloca = builder_.CreateAlloca(__get_type<T>(), size);
+  auto alloca = builder_.CreateAlloca(_get_type<T>(), size);
 
   for (size_t i = 0; i < vals.size(); i++) {
     llvm::Value *value = vals[i].val_;
@@ -83,7 +83,7 @@ Value Function::__build_arrayref(const std::vector<Value> &vals, bool from_liter
 }
 
 template <typename T>
-llvm::Type *Function::__get_type()
+llvm::Type *Function::_get_type()
 {
   return LLVMType<T>::get(*mod_);
 }
@@ -91,44 +91,44 @@ llvm::Type *Function::__get_type()
 template <typename T>
 Value Function::build_integer(T n)
 {
-  __check_finalized();
+  _check_finalized();
   return {builder_.getIntN(sizeof(T) * 8, n)};
 }
 
 template <typename T>
 Value Function::build_arrayref(const std::vector<Value> &v)
 {
-  __check_finalized();
-  return __build_arrayref<T>(v, /* from_literal= */ false);
+  _check_finalized();
+  return _build_arrayref<T>(v, /* from_literal= */ false);
 }
 
 template <typename T>
 Value Function::build_arrayref_lit(const std::vector<Value> &v)
 {
-  __check_finalized();
-  return __build_arrayref<T>(v, /* from_literal= */ true);
+  _check_finalized();
+  return _build_arrayref<T>(v, /* from_literal= */ true);
 }
 
 template <typename T>
 Value Function::build_nullopt()
 {
-  __check_finalized();
-  return __build_optional<T, factory::NullOpt<T>>();
+  _check_finalized();
+  return _build_optional<T, factory::NullOpt<T>>();
 }
 
 template <typename T>
 Value Function::build_optional(Value val)
 {
-  __check_finalized();
-  return __build_optional<T, factory::Optional<T>>(val);
+  _check_finalized();
+  return _build_optional<T, factory::Optional<T>>(val);
 }
 
 template <typename T>
 Value Function::build_optional_lit(Value val)
 {
-  __check_finalized();
+  _check_finalized();
 
-  auto alloca = builder_.CreateAlloca(__get_type<T>());
+  auto alloca = builder_.CreateAlloca(_get_type<T>());
   builder_.CreateStore(val.val_, alloca);
 
   return build_optional<T>({alloca});
