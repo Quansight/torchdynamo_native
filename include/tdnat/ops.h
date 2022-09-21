@@ -10,7 +10,8 @@
 #include <string>
 #include <unordered_map>
 
-namespace tdnat {
+namespace tdnat
+{
 
 using Addr = uint64_t;
 
@@ -19,12 +20,16 @@ struct ATenOpVTable {
   using AddAttributesFn = void (*)(llvm::Function *);
   using AllocateMemForRetFn = llvm::Value *(*)(llvm::IRBuilder<> &);
 
-  ATenOpVTable(LLVMFunctionTypeFn llvm_function_type_fn,
-               AddAttributesFn add_attributes_fn,
-               AllocateMemForRetFn allocate_mem_for_ret_fn)
-      : llvm_function_type_fn_(llvm_function_type_fn),
-        add_attributes_fn_(add_attributes_fn),
-        allocate_mem_for_ret_fn_(allocate_mem_for_ret_fn) {}
+  ATenOpVTable(
+      LLVMFunctionTypeFn llvm_function_type_fn,
+      AddAttributesFn add_attributes_fn,
+      AllocateMemForRetFn allocate_mem_for_ret_fn
+  ) :
+      llvm_function_type_fn_(llvm_function_type_fn),
+      add_attributes_fn_(add_attributes_fn),
+      allocate_mem_for_ret_fn_(allocate_mem_for_ret_fn)
+  {
+  }
 
   // Pointer to the function that returns the LLVMFunctionType
   // instance that corresponds to this function's signature.
@@ -39,26 +44,44 @@ struct ATenOpVTable {
   AllocateMemForRetFn allocate_mem_for_ret_fn_;
 };
 
-class ATenOpRef {
+class ATenOpRef
+{
 public:
-  ATenOpRef(const char *opname, Addr cpufn, bool returns_on_memory,
-            ATenOpVTable vtable)
-      : opname_(opname), cpufn_(cpufn), returns_on_memory_(returns_on_memory),
-        vtable_(vtable) {}
+  ATenOpRef(const char *opname, Addr cpufn, bool returns_on_memory, ATenOpVTable vtable) :
+      opname_(opname),
+      cpufn_(cpufn),
+      returns_on_memory_(returns_on_memory),
+      vtable_(vtable)
+  {
+  }
 
-  std::string name() { return std::string("__jit_") + opname_; }
+  std::string name()
+  {
+    return std::string("__jit_") + opname_;
+  }
 
-  Addr cpu() { return cpufn_; }
+  Addr cpu()
+  {
+    return cpufn_;
+  }
 
-  bool returns_on_memory() { return returns_on_memory_; }
+  bool returns_on_memory()
+  {
+    return returns_on_memory_;
+  }
 
-  llvm::FunctionType *llvm_function_type(llvm::Module &module) {
+  llvm::FunctionType *llvm_function_type(llvm::Module &module)
+  {
     return vtable_.llvm_function_type_fn_(module);
   }
 
-  void add_attributes(llvm::Function *fn) { vtable_.add_attributes_fn_(fn); }
+  void add_attributes(llvm::Function *fn)
+  {
+    vtable_.add_attributes_fn_(fn);
+  }
 
-  llvm::Value *allocate_mem_for_ret(llvm::IRBuilder<> &builder) {
+  llvm::Value *allocate_mem_for_ret(llvm::IRBuilder<> &builder)
+  {
     return vtable_.allocate_mem_for_ret_fn_(builder);
   }
 

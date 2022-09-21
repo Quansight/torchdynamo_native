@@ -20,7 +20,8 @@
 #include <iostream>
 #include <type_traits>
 
-namespace tdnat {
+namespace tdnat
+{
 
 template <typename T>
 llvm::Type *get_or_create_type_by_name(llvm::Module &module);
@@ -42,18 +43,22 @@ llvm::Type *get_or_create_type_by_name(llvm::Module &module);
 //     Creates the struct with its name. This method should be
 //     called before get().
 
-template <typename T, typename _Tp = void> struct LLVMType {};
+template <typename T, typename Tp = void>
+struct LLVMType {
+};
 
 // Types covered: references (T&) and pointers (T*).
 template <typename T>
-struct LLVMType<T, std::enable_if_t<std::is_pointer<T>::value ||
-                                    std::is_reference<T>::value>> {
-  using Tval =
-      std::remove_cv_t<std::remove_pointer_t<std::remove_reference_t<T>>>;
+struct LLVMType<T, std::enable_if_t<std::is_pointer<T>::value || std::is_reference<T>::value>> {
+  using Tval = std::remove_cv_t<std::remove_pointer_t<std::remove_reference_t<T>>>;
 
-  static std::string name() { return LLVMType<Tval>::name() + "_ptr"; }
+  static std::string name()
+  {
+    return LLVMType<Tval>::name() + "_ptr";
+  }
 
-  static llvm::Type *get(llvm::Module &module) {
+  static llvm::Type *get(llvm::Module &module)
+  {
     return llvm::PointerType::get(LLVMType<Tval>::get(module), 0);
   }
 };
@@ -65,10 +70,12 @@ struct LLVMType<T, std::enable_if_t<std::is_pointer<T>::value ||
 //   - (unsigned) long
 //   - (unsigned) long long
 template <typename T>
-struct LLVMType<T, std::enable_if_t<std::numeric_limits<T>::is_integer &&
-                                    !std::is_same<T, bool>::value>> {
-  static std::string name() {
-    size_t bits = sizeof(T) * 8;
+struct LLVMType<
+    T,
+    std::enable_if_t<std::numeric_limits<T>::is_integer && !std::is_same<T, bool>::value>> {
+  static std::string name()
+  {
+    size_t bits = sizeof(T) * 8; // NOLINT(cppcoreguidelines-avoid-magic-numbers)
     if (std::is_integral<T>::value) {
       return std::string("i") + std::to_string(bits);
     } else {
@@ -76,207 +83,306 @@ struct LLVMType<T, std::enable_if_t<std::numeric_limits<T>::is_integer &&
     }
   }
 
-  static llvm::Type *get(llvm::Module &module) {
+  static llvm::Type *get(llvm::Module &module)
+  {
+    // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers)
     return llvm::Type::getIntNTy(module.getContext(), sizeof(T) * 8);
   }
 };
 
-template <> struct LLVMType<void> {
-  static std::string name() { return "void"; }
+template <>
+struct LLVMType<void> {
+  static std::string name()
+  {
+    return "void";
+  }
 
-  static llvm::Type *get(llvm::Module &module) {
+  static llvm::Type *get(llvm::Module &module)
+  {
     return llvm::Type::getVoidTy(module.getContext());
   }
 };
 
-template <> struct LLVMType<bool> {
-  static std::string name() { return "bool"; }
+template <>
+struct LLVMType<bool> {
+  static std::string name()
+  {
+    return "bool";
+  }
 
-  static llvm::Type *get(llvm::Module &module) {
+  static llvm::Type *get(llvm::Module &module)
+  {
     return llvm::Type::getInt1Ty(module.getContext());
   }
 };
 
-template <> struct LLVMType<double> {
-  static std::string name() { return "double"; }
+template <>
+struct LLVMType<double> {
+  static std::string name()
+  {
+    return "double";
+  }
 
-  static llvm::Type *get(llvm::Module &module) {
+  static llvm::Type *get(llvm::Module &module)
+  {
     return llvm::Type::getDoubleTy(module.getContext());
   }
 };
 
-template <> struct LLVMType<at::ScalarType> {
-  static std::string name() { return "at::ScalarType"; }
+template <>
+struct LLVMType<at::ScalarType> {
+  static std::string name()
+  {
+    return "at::ScalarType";
+  }
 
-  static llvm::Type *get(llvm::Module &module) {
+  static llvm::Type *get(llvm::Module &module)
+  {
     return llvm::Type::getInt8Ty(module.getContext());
   }
 };
 
-template <> struct LLVMType<at::MemoryFormat> {
-  static std::string name() { return "at::MemoryFormat"; }
+template <>
+struct LLVMType<at::MemoryFormat> {
+  static std::string name()
+  {
+    return "at::MemoryFormat";
+  }
 
-  static llvm::Type *get(llvm::Module &module) {
+  static llvm::Type *get(llvm::Module &module)
+  {
     return llvm::Type::getInt8Ty(module.getContext());
   }
 };
 
-template <> struct LLVMType<at::Layout> {
-  static std::string name() { return "at::Layout"; }
+template <>
+struct LLVMType<at::Layout> {
+  static std::string name()
+  {
+    return "at::Layout";
+  }
 
-  static llvm::Type *get(llvm::Module &module) {
+  static llvm::Type *get(llvm::Module &module)
+  {
     return llvm::Type::getInt8Ty(module.getContext());
   }
 };
 
-template <> struct LLVMType<at::Tensor> {
-  static std::string name() { return "at::Tensor"; }
+template <>
+struct LLVMType<at::Tensor> {
+  static std::string name()
+  {
+    return "at::Tensor";
+  }
 
-  static llvm::Type *get(llvm::Module &module) {
+  static llvm::Type *get(llvm::Module &module)
+  {
     return get_or_create_type_by_name<at::Tensor>(module);
   }
 
-  static llvm::StructType *create(llvm::Module &module) {
-    return llvm::StructType::create(
-        {llvm::Type::getInt8PtrTy(module.getContext())}, name(), false);
+  static llvm::StructType *create(llvm::Module &module)
+  {
+    return llvm::StructType::create({llvm::Type::getInt8PtrTy(module.getContext())}, name(), false);
   }
 };
 
-template <> struct LLVMType<at::Generator> {
-  static std::string name() { return "at::Generator"; }
+template <>
+struct LLVMType<at::Generator> {
+  static std::string name()
+  {
+    return "at::Generator";
+  }
 
-  static llvm::Type *get(llvm::Module &module) {
+  static llvm::Type *get(llvm::Module &module)
+  {
     return get_or_create_type_by_name<at::Generator>(module);
   }
 
-  static llvm::StructType *create(llvm::Module &module) {
-    return llvm::StructType::create(
-        {llvm::Type::getInt8PtrTy(module.getContext())}, name(), false);
+  static llvm::StructType *create(llvm::Module &module)
+  {
+    return llvm::StructType::create({llvm::Type::getInt8PtrTy(module.getContext())}, name(), false);
   }
 };
 
-template <> struct LLVMType<at::Storage> {
-  static std::string name() { return "at::Storage"; }
+template <>
+struct LLVMType<at::Storage> {
+  static std::string name()
+  {
+    return "at::Storage";
+  }
 
-  static llvm::Type *get(llvm::Module &module) {
+  static llvm::Type *get(llvm::Module &module)
+  {
     return get_or_create_type_by_name<at::Storage>(module);
   }
 
-  static llvm::StructType *create(llvm::Module &module) {
-    return llvm::StructType::create(
-        {llvm::Type::getInt8PtrTy(module.getContext())}, name(), false);
+  static llvm::StructType *create(llvm::Module &module)
+  {
+    return llvm::StructType::create({llvm::Type::getInt8PtrTy(module.getContext())}, name(), false);
   }
 };
 
-template <> struct LLVMType<at::Scalar> {
-  static std::string name() { return "at::Scalar"; }
+template <>
+struct LLVMType<at::Scalar> {
+  static std::string name()
+  {
+    return "at::Scalar";
+  }
 
-  static llvm::Type *get(llvm::Module &module) {
+  static llvm::Type *get(llvm::Module &module)
+  {
     return get_or_create_type_by_name<at::Scalar>(module);
   }
 
-  static llvm::StructType *create(llvm::Module &module) {
+  static llvm::StructType *create(llvm::Module &module)
+  {
     auto &context = module.getContext();
     return llvm::StructType::create(
         {llvm::Type::getInt32Ty(context),
-         llvm::ArrayType::get(llvm::Type::getInt8Ty(context),
-                              sizeof(double) * 2 - 4),
-         llvm::StructType::get(context, {llvm::Type::getDoubleTy(context),
-                                         llvm::Type::getDoubleTy(context)})},
-        name(), false);
+         llvm::ArrayType::get(llvm::Type::getInt8Ty(context), sizeof(double) * 2 - 4),
+         llvm::StructType::get(
+             context,
+             {llvm::Type::getDoubleTy(context), llvm::Type::getDoubleTy(context)}
+         )},
+        name(),
+        false
+    );
   }
 };
 
-template <> struct LLVMType<at::Device> {
-  static std::string name() { return "at::Device"; }
+template <>
+struct LLVMType<at::Device> {
+  static std::string name()
+  {
+    return "at::Device";
+  }
 
-  static llvm::Type *get(llvm::Module &module) {
+  static llvm::Type *get(llvm::Module &module)
+  {
     return get_or_create_type_by_name<at::Device>(module);
   }
 
-  static llvm::StructType *create(llvm::Module &module) {
+  static llvm::StructType *create(llvm::Module &module)
+  {
     auto &context = module.getContext();
     return llvm::StructType::create(
         {llvm::Type::getInt8Ty(context), llvm::Type::getInt8Ty(context)},
-        name(), false);
+        name(),
+        false
+    );
   }
 };
 
-template <> struct LLVMType<c10::Stream> {
-  static std::string name() { return "c10::Stream"; }
+template <>
+struct LLVMType<c10::Stream> {
+  static std::string name()
+  {
+    return "c10::Stream";
+  }
 
-  static llvm::Type *get(llvm::Module &module) {
+  static llvm::Type *get(llvm::Module &module)
+  {
     return get_or_create_type_by_name<c10::Stream>(module);
   }
 
-  static llvm::StructType *create(llvm::Module &module) {
+  static llvm::StructType *create(llvm::Module &module)
+  {
     auto &context = module.getContext();
     return llvm::StructType::create(
         {LLVMType<c10::Device>::get(module), LLVMType<int64_t>::get(module)},
-        name(), false);
+        name(),
+        false
+    );
   }
 };
 
-template <> struct LLVMType<c10::string_view> {
-  static std::string name() { return "c10::string_view"; }
+template <>
+struct LLVMType<c10::string_view> {
+  static std::string name()
+  {
+    return "c10::string_view";
+  }
 
-  static llvm::Type *get(llvm::Module &module) {
+  static llvm::Type *get(llvm::Module &module)
+  {
     return get_or_create_type_by_name<c10::string_view>(module);
   }
 
-  static llvm::StructType *create(llvm::Module &module) {
+  static llvm::StructType *create(llvm::Module &module)
+  {
     auto &context = module.getContext();
-    return llvm::StructType::create({llvm::Type::getInt8PtrTy(context),
-                                     llvm::Type::getScalarTy<size_t>(context)},
-                                    name(), false);
+    return llvm::StructType::create(
+        {llvm::Type::getInt8PtrTy(context), llvm::Type::getScalarTy<size_t>(context)},
+        name(),
+        false
+    );
   }
 };
 
-template <> struct LLVMType<std::vector<at::Tensor>> {
-  static std::string name() { return "std::vector<at::Tensor>"; }
+template <>
+struct LLVMType<std::vector<at::Tensor>> {
+  static std::string name()
+  {
+    return "std::vector<at::Tensor>";
+  }
 
-  static llvm::Type *get(llvm::Module &module) {
+  static llvm::Type *get(llvm::Module &module)
+  {
     return get_or_create_type_by_name<std::vector<at::Tensor>>(module);
   }
 
-  static llvm::StructType *create(llvm::Module &module) {
+  static llvm::StructType *create(llvm::Module &module)
+  {
     auto &context = module.getContext();
-    return llvm::StructType::create({LLVMType<at::Tensor *>::get(module),
-                                     LLVMType<at::Tensor *>::get(module),
-                                     LLVMType<at::Tensor *>::get(module)},
-                                    name(), false);
+    return llvm::StructType::create(
+        {LLVMType<at::Tensor *>::get(module),
+         LLVMType<at::Tensor *>::get(module),
+         LLVMType<at::Tensor *>::get(module)},
+        name(),
+        false
+    );
   }
 };
 
 // Types covered: List<T>
-template <typename T> struct LLVMType<c10::List<T>> {
-  static std::string name() { return "c10::List<" + LLVMType<T>::name() + ">"; }
+template <typename T>
+struct LLVMType<c10::List<T>> {
+  static std::string name()
+  {
+    return "c10::List<" + LLVMType<T>::name() + ">";
+  }
 
-  static llvm::Type *get(llvm::Module &module) {
+  static llvm::Type *get(llvm::Module &module)
+  {
     return get_or_create_type_by_name<c10::List<T>>(module);
   }
 
-  static llvm::StructType *create(llvm::Module &module) {
-    return llvm::StructType::create(
-        {llvm::Type::getInt8PtrTy(module.getContext())}, name(), false);
+  static llvm::StructType *create(llvm::Module &module)
+  {
+    return llvm::StructType::create({llvm::Type::getInt8PtrTy(module.getContext())}, name(), false);
   }
 };
 
 // Types covered: ArrayRef<T>
-template <typename T> struct LLVMType<at::ArrayRef<T>> {
-  static std::string name() {
+template <typename T>
+struct LLVMType<at::ArrayRef<T>> {
+  static std::string name()
+  {
     return std::string("at::ArrayRef<") + LLVMType<T>::name() + ">";
   }
 
-  static llvm::Type *get(llvm::Module &module) {
+  static llvm::Type *get(llvm::Module &module)
+  {
     return get_or_create_type_by_name<at::ArrayRef<T>>(module);
   }
 
-  static llvm::StructType *create(llvm::Module &module) {
+  static llvm::StructType *create(llvm::Module &module)
+  {
     return llvm::StructType::create(
-        {LLVMType<T *>::get(module),
-         llvm::Type::getScalarTy<size_t>(module.getContext())},
-        name(), false);
+        {LLVMType<T *>::get(module), llvm::Type::getScalarTy<size_t>(module.getContext())},
+        name(),
+        false
+    );
   }
 };
 
@@ -285,34 +391,43 @@ template <typename T> struct LLVMType<at::ArrayRef<T>> {
 // Rationale: optional<ArrayRef<T>> has a storage optimization,
 // where it uses the same storage as ArrayRef<T> to represent
 // a 'nullopt' value.
-template <typename T> struct LLVMType<c10::optional<at::ArrayRef<T>>> {
-  static std::string name() {
-    return std::string("c10::optional<at::ArrayRef<") + LLVMType<T>::name() +
-           ">>";
+template <typename T>
+struct LLVMType<c10::optional<at::ArrayRef<T>>> {
+  static std::string name()
+  {
+    return std::string("c10::optional<at::ArrayRef<") + LLVMType<T>::name() + ">>";
   }
 
-  static llvm::Type *get(llvm::Module &module) {
+  static llvm::Type *get(llvm::Module &module)
+  {
     return get_or_create_type_by_name<c10::optional<at::ArrayRef<T>>>(module);
   }
 
-  static llvm::StructType *create(llvm::Module &module) {
+  static llvm::StructType *create(llvm::Module &module)
+  {
     return llvm::StructType::create(
         {llvm::PointerType::get(LLVMType<T>::get(module), 0),
          llvm::Type::getScalarTy<size_t>(module.getContext())},
-        name(), false);
+        name(),
+        false
+    );
   }
 };
 
-template <typename T> struct LLVMType<c10::optional<T>> {
-  static std::string name() {
+template <typename T>
+struct LLVMType<c10::optional<T>> {
+  static std::string name()
+  {
     return std::string("c10::optional<") + LLVMType<T>::name() + ">>";
   }
 
-  static llvm::Type *get(llvm::Module &module) {
+  static llvm::Type *get(llvm::Module &module)
+  {
     return get_or_create_type_by_name<c10::optional<T>>(module);
   }
 
-  static llvm::StructType *create(llvm::Module &module) {
+  static llvm::StructType *create(llvm::Module &module)
+  {
     auto &context = module.getContext();
 
     llvm::Type *storage_type = nullptr;
@@ -321,27 +436,35 @@ template <typename T> struct LLVMType<c10::optional<T>> {
     } else {
       storage_type = llvm::Type::getInt8Ty(context);
     }
-    return llvm::StructType::create({LLVMType<bool>::get(module), storage_type},
-                                    name(), false);
+    return llvm::StructType::create({LLVMType<bool>::get(module), storage_type}, name(), false);
   }
 };
 
-template <> struct LLVMType<c10::OptionalArrayRef<long>> {
-  static std::string name() { return "c10::OptionalArrayRef<long>"; }
+template <>
+struct LLVMType<c10::OptionalArrayRef<long>> {
+  static std::string name()
+  {
+    return "c10::OptionalArrayRef<long>";
+  }
 
-  static llvm::Type *get(llvm::Module &module) {
+  static llvm::Type *get(llvm::Module &module)
+  {
     return get_or_create_type_by_name<c10::OptionalArrayRef<long>>(module);
   }
 
-  static llvm::Type *create(llvm::Module &module) {
+  static llvm::Type *create(llvm::Module &module)
+  {
     return llvm::StructType::create(
-        {LLVMType<c10::optional<at::ArrayRef<long>>>::get(module)}, name(),
-        false);
+        {LLVMType<c10::optional<at::ArrayRef<long>>>::get(module)},
+        name(),
+        false
+    );
   }
 };
 
 template <typename T>
-llvm::Type *get_or_create_type_by_name(llvm::Module &module) {
+llvm::Type *get_or_create_type_by_name(llvm::Module &module)
+{
   auto name = LLVMType<T>::name();
   auto type = module.getTypeByName(name);
   if (type == nullptr) {
@@ -360,15 +483,18 @@ llvm::Type *get_or_create_type_by_name(llvm::Module &module) {
 // 2. POD types smaller than 16-bytes may be coerced into up to 2
 // registers. In those cases, the type is treated as an N-bit integer.
 
-template <typename T, typename _Tp = void> struct LLVMArgType {
-  static llvm::Type *get(llvm::Module &module) {
+template <typename T, typename Tp = void>
+struct LLVMArgType {
+  static llvm::Type *get(llvm::Module &module)
+  {
     return LLVMType<T>::get(module);
   }
 };
 
 template <typename T>
 struct LLVMArgType<T, std::enable_if_t<IsABIMemoryClass<T>::value>> {
-  static llvm::Type *get(llvm::Module &module) {
+  static llvm::Type *get(llvm::Module &module)
+  {
     return LLVMType<T *>::get(module);
   }
 };
@@ -382,25 +508,27 @@ struct LLVMArgType<T, std::enable_if_t<IsABIMemoryClass<T>::value>> {
 //   - 8 bits for the 'bool' flag.
 //   - 8 bits for the enumeration.
 template <typename T>
-struct LLVMArgType<c10::optional<T>,
-                   std::enable_if_t<IsInt8EnumType<T>::value>> {
-  static llvm::Type *get(llvm::Module &module) {
+struct LLVMArgType<c10::optional<T>, std::enable_if_t<IsInt8EnumType<T>::value>> {
+  static llvm::Type *get(llvm::Module &module)
+  {
     return LLVMType<int16_t>::get(module);
   }
 };
 
 // See above (2).
 
-template <typename T, typename _Tp = void> struct LLVMRetType {
-  static llvm::Type *get(llvm::Module &module) {
+template <typename T, typename Tp = void>
+struct LLVMRetType {
+  static llvm::Type *get(llvm::Module &module)
+  {
     return LLVMType<T>::get(module);
   }
 };
 
 template <typename T>
-struct LLVMRetType<c10::optional<T>,
-                   std::enable_if_t<IsInt8EnumType<T>::value>> {
-  static llvm::Type *get(llvm::Module &module) {
+struct LLVMRetType<c10::optional<T>, std::enable_if_t<IsInt8EnumType<T>::value>> {
+  static llvm::Type *get(llvm::Module &module)
+  {
     return LLVMType<int16_t>::get(module);
   }
 };

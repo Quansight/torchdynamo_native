@@ -9,20 +9,29 @@
 
 #include <type_traits>
 
-namespace tdnat {
+namespace tdnat
+{
 
-template <typename T> struct LLVMFunctionType {};
+template <typename T>
+struct LLVMFunctionType {
+};
 
 template <typename Return, typename... Args>
 struct LLVMFunctionType<Return (*)(Args...)> {
-  static llvm::FunctionType *get(llvm::Module &module) {
-    return llvm::FunctionType::get(LLVMRetType<Return>::get(module),
-                                   {LLVMArgType<Args>::get(module)...}, false);
+  static llvm::FunctionType *get(llvm::Module &module)
+  {
+    return llvm::FunctionType::get(
+        LLVMRetType<Return>::get(module),
+        {LLVMArgType<Args>::get(module)...},
+        false
+    );
   }
 };
 
-template <typename T> struct ABILLVMFunctionType {
-  static llvm::FunctionType *get(llvm::Module &module) {
+template <typename T>
+struct ABILLVMFunctionType {
+  static llvm::FunctionType *get(llvm::Module &module)
+  {
     return LLVMFunctionType<typename ABIFunctionType<T>::type>::get(module);
   }
 };
@@ -35,7 +44,8 @@ template <typename T> struct ABILLVMFunctionType {
 // requirement, we must add these attributes.
 
 template <typename Return, typename... Args>
-void add_attributes(llvm::Function *fn) {
+void add_attributes(llvm::Function *fn)
+{
   using AttrKind = llvm::Attribute::AttrKind;
 
   size_t offset = 0;
@@ -45,8 +55,9 @@ void add_attributes(llvm::Function *fn) {
   auto &mod = *fn->getParent();
   auto &ctx = fn->getContext();
   if (IsABIMemoryClass<Return>::value) {
-    fn->getArg(0)->addAttr(llvm::Attribute::get(ctx, AttrKind::StructRet,
-                                                LLVMType<Return>::get(mod)));
+    fn->getArg(0)->addAttr(
+        llvm::Attribute::get(ctx, AttrKind::StructRet, LLVMType<Return>::get(mod))
+    );
     offset = 1;
   }
 
@@ -56,8 +67,7 @@ void add_attributes(llvm::Function *fn) {
   auto types = std::vector<llvm::Type *>{LLVMType<Args>::get(mod)...};
   for (size_t i = 0; i < is_byval_type.size(); i++) {
     if (is_byval_type[i]) {
-      fn->getArg(i + offset)
-          ->addAttr(llvm::Attribute::getWithByValType(ctx, types[i]));
+      fn->getArg(i + offset)->addAttr(llvm::Attribute::getWithByValType(ctx, types[i]));
     }
   }
 }

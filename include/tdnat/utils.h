@@ -9,16 +9,28 @@
 #include <type_traits>
 #include <vector>
 
-namespace tdnat {
+namespace tdnat
+{
 
-template <typename T> struct IsOptionalType : public std::false_type {};
 template <typename T>
-struct IsOptionalType<c10::optional<T>> : public std::true_type {};
+struct IsOptionalType : public std::false_type {
+};
+template <typename T>
+struct IsOptionalType<c10::optional<T>> : public std::true_type {
+};
 
-template <typename T> struct IsInt8EnumType : public std::false_type {};
-template <> struct IsInt8EnumType<at::ScalarType> : public std::true_type {};
-template <> struct IsInt8EnumType<at::MemoryFormat> : public std::true_type {};
-template <> struct IsInt8EnumType<at::Layout> : public std::true_type {};
+template <typename T>
+struct IsInt8EnumType : public std::false_type {
+};
+template <>
+struct IsInt8EnumType<at::ScalarType> : public std::true_type {
+};
+template <>
+struct IsInt8EnumType<at::MemoryFormat> : public std::true_type {
+};
+template <>
+struct IsInt8EnumType<at::Layout> : public std::true_type {
+};
 
 // C++ types that are classified as MEMORY class in the SystemV ABI.
 // Some of the necessary conditions are:
@@ -29,23 +41,27 @@ template <> struct IsInt8EnumType<at::Layout> : public std::true_type {};
 // c10::Scalar, for example, is also classified as MEMORY.
 // However, that is because of its size.
 
-template <typename T, typename _Tp = void>
-struct IsABIMemoryClass : public std::false_type {};
+template <typename T, typename Tp = void>
+struct IsABIMemoryClass : public std::false_type {
+};
 
 template <typename T>
-struct IsABIMemoryClass<c10::optional<T>,
-                        std::enable_if_t<IsABIMemoryClass<T>::value>>
-    : public std::true_type {};
+struct IsABIMemoryClass<c10::optional<T>, std::enable_if_t<IsABIMemoryClass<T>::value>>
+    : public std::true_type {
+};
 
 template <typename T>
 struct IsABIMemoryClass<
-    T, std::enable_if_t<!std::is_same<T, void>::value &&
-                        !IsOptionalType<T>::value &&
-                        (!std::is_trivially_copy_constructible<T>::value ||
-                         !std::is_trivially_destructible<T>::value)>>
-    : public std::true_type {};
+    T,
+    std::enable_if_t<
+        !std::is_same<T, void>::value && !IsOptionalType<T>::value &&
+        (!std::is_trivially_copy_constructible<T>::value ||
+         !std::is_trivially_destructible<T>::value)>> : public std::true_type {
+};
 
-template <> struct IsABIMemoryClass<at::Scalar> : public std::true_type {};
+template <>
+struct IsABIMemoryClass<at::Scalar> : public std::true_type {
+};
 
 // Some function types are translated slightly different for the
 // SystemV ABI.
@@ -59,17 +75,17 @@ template <> struct IsABIMemoryClass<at::Scalar> : public std::true_type {};
 //   - Returns the address of the return value (i.e. same as the 1st
 //     argument)
 
-template <typename T, typename _Tp = void> struct ABIFunctionType {};
+template <typename T, typename Tp = void>
+struct ABIFunctionType {
+};
 
 template <typename Return, typename... Args>
-struct ABIFunctionType<Return (*)(Args...),
-                       std::enable_if_t<IsABIMemoryClass<Return>::value>> {
+struct ABIFunctionType<Return (*)(Args...), std::enable_if_t<IsABIMemoryClass<Return>::value>> {
   using type = void (*)(Return *, Args...);
 };
 
 template <typename Return, typename... Args>
-struct ABIFunctionType<Return (*)(Args...),
-                       std::enable_if_t<!IsABIMemoryClass<Return>::value>> {
+struct ABIFunctionType<Return (*)(Args...), std::enable_if_t<!IsABIMemoryClass<Return>::value>> {
   using type = Return (*)(Args...);
 };
 

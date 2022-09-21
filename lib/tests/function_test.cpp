@@ -15,13 +15,15 @@
 #include <algorithm>
 #include <iterator>
 
-TEST(FunctionTest, AddTest) {
+// NOLINTNEXTLINE
+TEST(FunctionTest, AddTest)
+{
   auto data = tdnat::FunctionData{"aten_add", 2, 1};
   tdnat::Function fn(data);
 
-  auto lhs = at::randint(10, {2, 2});
-  auto rhs = at::randint(10, {2, 2});
-  auto alpha = 5;
+  auto lhs = at::randint(10, {2, 2}); // NOLINT(cppcoreguidelines-avoid-magic-numbers)
+  auto rhs = at::randint(10, {2, 2}); // NOLINT(cppcoreguidelines-avoid-magic-numbers)
+  auto alpha = 5;                     // NOLINT(cppcoreguidelines-avoid-magic-numbers)
   auto expect = at::add(lhs, rhs, alpha);
 
   {
@@ -42,12 +44,14 @@ TEST(FunctionTest, AddTest) {
   ASSERT_TRUE(expect.equal(result[0]));
 }
 
-TEST(FunctionTest, CatTest) {
+// NOLINTNEXTLINE
+TEST(FunctionTest, CatTest)
+{
   auto data = tdnat::FunctionData{"aten_cat", 2, 1};
   tdnat::Function fn(data);
 
-  auto t1 = at::randint(10, {1, 2, 2});
-  auto t2 = at::randint(10, {1, 2, 2});
+  auto t1 = at::randint(10, {1, 2, 2}); // NOLINT(cppcoreguidelines-avoid-magic-numbers)
+  auto t2 = at::randint(10, {1, 2, 2}); // NOLINT(cppcoreguidelines-avoid-magic-numbers)
   auto dim = 0;
   auto expect = at::cat({t1, t2}, dim);
 
@@ -70,12 +74,16 @@ TEST(FunctionTest, CatTest) {
   ASSERT_TRUE(expect.equal(result[0]));
 }
 
-TEST(FunctionTest, IndexTest) {
+// NOLINTNEXTLINE
+TEST(FunctionTest, IndexTest)
+{
   auto data = tdnat::FunctionData{"aten_index", 3, 1};
   tdnat::Function fn(data);
 
-  auto tensor = at::randint(10, {1, 10, 10});
+  auto tensor = at::randint(10, {1, 10, 10}); // NOLINT(cppcoreguidelines-avoid-magic-numbers)
+  // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers)
   auto i0 = at::randint(10, {4, 4}, at::TensorOptions{}.dtype(at::kLong));
+  // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers)
   auto i1 = at::randint(10, {4, 4}, at::TensorOptions{}.dtype(at::kLong));
   c10::List<c10::optional<at::Tensor>> indices{c10::nullopt, i0, i1};
   auto expect = at::index(tensor, indices);
@@ -103,11 +111,13 @@ TEST(FunctionTest, IndexTest) {
   ASSERT_TRUE(expect.equal(result[0]));
 }
 
-TEST(FunctionTest, ArgMinTest) {
+// NOLINTNEXTLINE
+TEST(FunctionTest, ArgMinTest)
+{
   auto data = tdnat::FunctionData{"aten_argmin", 1, 1};
   tdnat::Function fn(data);
 
-  auto tensor = at::randint(10, {1, 10, 10});
+  auto tensor = at::randint(10, {1, 10, 10}); // NOLINT(cppcoreguidelines-avoid-magic-numbers)
   auto dim = 0;
   auto keepdim = true;
   auto expect = at::argmin(tensor, dim, keepdim);
@@ -132,11 +142,13 @@ TEST(FunctionTest, ArgMinTest) {
   ASSERT_TRUE(expect.equal(result[0]));
 }
 
-TEST(FunctionTest, SumTest) {
+// NOLINTNEXTLINE
+TEST(FunctionTest, SumTest)
+{
   auto data = tdnat::FunctionData{"aten_sum", 1, 1};
   tdnat::Function fn(data);
 
-  auto tensor = at::randint(10, {1, 10, 10});
+  auto tensor = at::randint(10, {1, 10, 10}); // NOLINT(cppcoreguidelines-avoid-magic-numbers)
   auto dim = std::vector<long>{0, 1};
   auto keepdim = true;
   auto type = at::ScalarType::Float;
@@ -146,8 +158,9 @@ TEST(FunctionTest, SumTest) {
     auto tensor = fn.set_placeholder(0, "tensor");
 
     auto dim_ = std::vector<tdnat::Value>{};
-    std::transform(dim.begin(), dim.end(), std::back_inserter(dim_),
-                   [&](long i) { return fn.build_integer<int64_t>(i); });
+    std::transform(dim.begin(), dim.end(), std::back_inserter(dim_), [&](long i) {
+      return fn.build_integer<int64_t>(i);
+    });
     auto dim_array = fn.build_arrayref_lit<int64_t>(dim_);
 
     auto type_ = fn.build_scalar_type(type);
@@ -155,8 +168,7 @@ TEST(FunctionTest, SumTest) {
 
     auto keepdim = fn.build_bool(true);
 
-    auto sum = fn.add_call("sum", "sum.dim_IntList",
-                           {tensor, dim_array, keepdim, type_opt});
+    auto sum = fn.add_call("sum", "sum.dim_IntList", {tensor, dim_array, keepdim, type_opt});
 
     fn.set_output(sum);
     fn.finalize();
@@ -169,11 +181,13 @@ TEST(FunctionTest, SumTest) {
   ASSERT_TRUE(expect.equal(result[0]));
 }
 
-TEST(FunctionTest, ChunkTest) {
+// NOLINTNEXTLINE
+TEST(FunctionTest, ChunkTest)
+{
   auto data = tdnat::FunctionData{"aten_chunk", 1, 4};
   tdnat::Function fn(data);
 
-  auto tensor = at::randint(10, {10, 16});
+  auto tensor = at::randint(10, {10, 16}); // NOLINT(cppcoreguidelines-avoid-magic-numbers)
   auto chunks = 4;
   auto dim = 1;
   auto expect = at::chunk(tensor, chunks, dim);

@@ -1,0 +1,20 @@
+---
+# cppcoreguidelines-pro-bounds-array-to-pointer-decay
+#   TORCH_CHECK and other macros.
+
+# clang-diagnostic-unused-command-line-argument
+#   Don't really care about these.
+
+Checks: |
+  bugprone-*,
+  -bugprone-easily-swappable-parameters,
+  cppcoreguidelines-*,
+  -cppcoreguidelines-pro-type-reinterpret-cast,
+  -cppcoreguidelines-pro-bounds-array-to-pointer-decay,
+  modernize-*,
+  -modernize-use-trailing-return-type,
+  performance-*,
+  -clang-diagnostic-unused-command-line-argument,
+HeaderFilterRegex: '^(?!c10|ATen|torch|pybind11)/.*'
+WarningsAsErrors: '*'
+...

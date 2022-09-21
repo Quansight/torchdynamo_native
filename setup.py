@@ -174,7 +174,8 @@ def generate_compile_commands(ext: Extension) -> None:
                 *include_dirs_args,
                 *library_dirs_args,
                 *library_args,
-                *ext.extra_compile_args
+                *ext.extra_compile_args,
+                s,
             ]),
             "file": s,
         })

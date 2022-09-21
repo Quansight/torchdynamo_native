@@ -9,25 +9,30 @@
 
 using namespace tdnat;
 
-namespace pybind11 {
-namespace detail {
+namespace pybind11
+{
+namespace detail
+{
 
-template <> struct type_caster<at::ScalarType> {
+template <>
+struct type_caster<at::ScalarType> {
 public:
+  // NOLINTNEXTLINE
   PYBIND11_TYPE_CASTER(at::ScalarType, _("at::ScalarType"));
 
-  bool load(handle src, bool) {
+  bool load(handle src, bool)
+  {
     PyObject *source = src.ptr();
 
     if (!THPDtype_Check(source) && !THPPythonScalarType_Check(source)) {
       return false;
     }
 
-    if (source == (PyObject *)&PyFloat_Type) {
+    if (source == reinterpret_cast<PyObject *>(&PyFloat_Type)) {
       value = at::ScalarType::Double;
-    } else if (source == (PyObject *)&PyBool_Type) {
+    } else if (source == reinterpret_cast<PyObject *>(&PyBool_Type)) {
       value = at::ScalarType::Bool;
-    } else if (source == (PyObject *)&PyLong_Type) {
+    } else if (source == reinterpret_cast<PyObject *>(&PyLong_Type)) {
       value = at::ScalarType::Long;
     } else {
       auto dtype = reinterpret_cast<THPDtype *>(source);
@@ -37,8 +42,8 @@ public:
     return true;
   }
 
-  static handle cast(at::ScalarType src, return_value_policy /* policy */,
-                     handle /* parent */) {
+  static handle cast(at::ScalarType src, return_value_policy /* policy */, handle /* parent */)
+  {
     TORCH_CHECK(false, "pybind11 casting not implemented for at::ScalarType.");
   }
 };
@@ -46,19 +51,23 @@ public:
 } // namespace detail
 } // namespace pybind11
 
-static Function function_init(const std::string id, size_t in_tensors,
-                              size_t out_tensors) {
+static Function function_init(const std::string &id, size_t in_tensors, size_t out_tensors)
+{
   return {{id, in_tensors, out_tensors}};
 }
 
 static std::vector<at::Tensor>
-jitfunction_run(JITFunction &jitfn, const std::vector<at::Tensor> &tensors) {
+jitfunction_run(JITFunction &jitfn, const std::vector<at::Tensor> &tensors)
+{
   return jitfn.run(tensors);
 }
 
-namespace {
+namespace
+{
 
-PYBIND11_MODULE(_C, m) {
+// NOLINTNEXTLINE
+PYBIND11_MODULE(_C, m)
+{
   // Initialize global registry + LLVM components.
   initialize();
 
@@ -91,15 +100,13 @@ PYBIND11_MODULE(_C, m) {
       .def("build_arrayref_int", &Function::build_arrayref<int64_t>)
       .def("build_arrayref_tensor", &Function::build_arrayref<at::Tensor>)
       .def("build_arrayref_lit_int", &Function::build_arrayref_lit<int64_t>)
-      .def("build_arrayref_lit_tensor",
-           &Function::build_arrayref_lit<at::Tensor>)
+      .def("build_arrayref_lit_tensor", &Function::build_arrayref_lit<at::Tensor>)
 
       .def("build_nullopt_tensor", &Function::build_nullopt<at::Tensor>)
 
       .def("build_optional_tensor", &Function::build_optional<at::Tensor>)
       .def("build_optional_lit_int", &Function::build_optional_lit<int64_t>)
-      .def("build_optional_lit_scalar_type",
-           &Function::build_optional_lit<at::ScalarType>)
+      .def("build_optional_lit_scalar_type", &Function::build_optional_lit<at::ScalarType>)
 
       .def("into_jit", &Function::into_jit);
 

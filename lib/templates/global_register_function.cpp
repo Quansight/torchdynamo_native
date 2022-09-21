@@ -2,12 +2,14 @@
 
 #include <tdnat/ops.h>
 
-namespace tdnat {
+namespace tdnat
+{
 
 ${register_functions_decl}
 
-void global_${register_function_prefix}(${register_function_parameters}) {
+void global_${register_function_prefix}(${register_function_parameters})
+{
   ${register_functions_call}
 }
 
-}
+} // namespace tdnat
