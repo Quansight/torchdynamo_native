@@ -2,6 +2,8 @@ from typing import List
 
 import torch
 
+def operation_in_registry(opname: str) -> bool: ...
+
 class Value: ...
 
 class Function:
