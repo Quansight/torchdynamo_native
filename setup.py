@@ -213,6 +213,7 @@ setup(
     install_requires=[
         "torchdynamo",
         "pybind11",
+        "expecttest",
     ],
     ext_modules=[
         CMakeExtension(),

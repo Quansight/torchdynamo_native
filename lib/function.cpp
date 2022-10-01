@@ -6,6 +6,7 @@
 #include <llvm/ExecutionEngine/Orc/Core.h>
 #include <llvm/IR/Verifier.h>
 #include <llvm/Support/Error.h>
+#include <llvm/Support/raw_ostream.h>
 
 #include <algorithm>
 #include <cstdint>
@@ -140,6 +141,13 @@ Value Function::add_call(
   if (opref.returns_on_memory()) {
     auto alloc = opref.allocate_mem_for_ret(builder_);
     values.insert(values.begin(), alloc);
+  }
+
+  if (opref.llvm_function_type(*mod_)->getNumParams() != values.size()) {
+    std::string buf;
+    llvm::raw_string_ostream rso(buf);
+    opref.llvm_function_type(*mod_)->print(rso);
+    TORCH_CHECK(false, "Unexpected number of parameters for ", rso.str(), ": got ", values.size());
   }
 
   auto call = builder_.CreateCall(opfn, values);
