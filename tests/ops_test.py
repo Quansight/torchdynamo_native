@@ -48,7 +48,12 @@ SKIP_LIST = [
     ("corrcoef", "non-deterministic behavior"),
     ("cov", "non-deterministic behavior"),
     ("where", "input is not the first argument"),
-    ("as_strided_scatter", "segmentation fault"),
+    ("multinomial", "non-deterministic operator"),
+
+    ("as_strided_scatter", "segfault"),
+    ("searchsorted", "segfault"),
+    ("istft", "segfault"),
+    ("stft", "segfault"),
 ]
 
 
@@ -185,7 +190,6 @@ def build_function_for_native(
     result = fn.add_call("result", op_name, value_args)
     fn.set_output(result)
     fn.finalize()
-    fn.dump()
 
     jitfn = fn.into_jit()
 

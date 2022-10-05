@@ -196,10 +196,22 @@ Value Function::build_scalar_type(at::ScalarType type)
   return {build_int(static_cast<int8_t>(type))};
 }
 
-Value Function::build_scalar(int64_t n)
+Value Function::build_memory_format(at::MemoryFormat mf)
+{
+  _check_finalized();
+  return {build_int(static_cast<int8_t>(mf))};
+}
+
+Value Function::build_scalar_int(int64_t n)
 {
   _check_finalized();
   return _build_scalar<int64_t>({builder_.getInt64(n)});
+}
+
+Value Function::build_scalar_float(double n)
+{
+  _check_finalized();
+  return _build_scalar<double>({llvm::ConstantFP::get(*ctx_, llvm::APFloat(n))});
 }
 
 struct VectorAtTensor {

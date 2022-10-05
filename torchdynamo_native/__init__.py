@@ -113,9 +113,8 @@ def str_to_py(thing: str, ty: Type) -> Any:
             return str_to_py(thing, BaseType(BaseTy.float))
 
     elif ty == BaseType(BaseTy.MemoryFormat):
-        # Defer translation to Function.
         if (thing == "contiguous_format"):
-            return thing
+            return torch.contiguous_format
 
     elif isinstance(ty, OptionalType):
         if thing == "None":
@@ -143,6 +142,9 @@ def nullopt_for_type(ty: Type, fn: Function) -> Value:
     elif ty == BaseType(BaseTy.Tensor):
         return fn.build_nullopt_tensor()
 
+    elif ty == BaseType(BaseTy.bool):
+        return fn.build_nullopt_bool()
+
     elif ty == BaseType(BaseTy.int):
         return fn.build_nullopt_int()
 
@@ -155,12 +157,31 @@ def nullopt_for_type(ty: Type, fn: Function) -> Value:
     elif ty == BaseType(BaseTy.MemoryFormat):
         return fn.build_nullopt_memory_format()
 
+    elif ty == BaseType(BaseTy.Device):
+        return fn.build_nullopt_device()
+
+    elif ty == BaseType(BaseTy.Layout):
+        return fn.build_nullopt_layout()
+
     raise ValueError(f"can't build nullopt for type: {ty}")
 
 
 def opt_for_type(ty: Type, value: Value, fn: Function) -> Value:
     if ty == BaseType(BaseTy.int):
         return fn.build_optional_lit_int(value)
+
+    elif ty == BaseType(BaseTy.float):
+        return fn.build_optional_lit_float(value)
+
+    elif ty == BaseType(BaseTy.MemoryFormat):
+        return fn.build_optional_lit_memory_format(value)
+
+    elif isinstance(ty, ListType):
+        elty = ty.elem
+
+        if elty == BaseType(BaseTy.int):
+            return fn.build_optional_arrayref_int(value)
+
     raise ValueError(f"can't build optional for type: {ty}")
 
 
@@ -177,8 +198,7 @@ def py_to_value(thing: Any, ty: Type, fn: Function) -> Value:
         return fn.build_int(thing)
 
     elif ty == BaseType(BaseTy.float):
-        # TODO return fn.build_float(thing)
-        pass
+        return fn.build_float(thing)
 
     elif ty == BaseType(BaseTy.str):
         # TODO return fn.build_str(thing)
@@ -191,14 +211,10 @@ def py_to_value(thing: Any, ty: Type, fn: Function) -> Value:
         if isinstance(thing, int):
             return fn.build_scalar_int(thing)
         else:
-            # TODO return fn.build_scalar_float(thing)
-            pass
+            return fn.build_scalar_float(thing)
 
     elif ty == BaseType(BaseTy.MemoryFormat):
-        # Defer translation to Function.
-        if (thing == "contiguous_format"):
-            # TODO return fn.build_memory_format_contiguous()
-            pass
+        return fn.build_memory_format(thing)
 
     elif isinstance(ty, OptionalType):
         if thing is None:

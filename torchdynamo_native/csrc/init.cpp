@@ -3,6 +3,7 @@
 
 #include <c10/util/Exception.h>
 #include <torch/csrc/Dtype.h>
+#include <torch/csrc/MemoryFormat.h>
 #include <torch/csrc/utils/pybind.h>
 
 #include <pybind11/pybind11.h>
@@ -45,6 +46,31 @@ public:
   static handle cast(at::ScalarType src, return_value_policy /* policy */, handle /* parent */)
   {
     TORCH_CHECK(false, "pybind11 casting not implemented for at::ScalarType.");
+  }
+};
+
+template <>
+struct type_caster<at::MemoryFormat> {
+public:
+  // NOLINTNEXTLINE
+  PYBIND11_TYPE_CASTER(at::MemoryFormat, _("at::MemoryFormat"));
+
+  bool load(handle src, bool)
+  {
+    PyObject *source = src.ptr();
+
+    if (THPMemoryFormat_Check(source)) {
+      auto mf = reinterpret_cast<THPMemoryFormat *>(source);
+      value = mf->memory_format;
+      return true;
+    } else {
+      return false;
+    }
+  }
+
+  static handle cast(at::ScalarType src, return_value_policy /* policy */, handle /* parent */)
+  {
+    TORCH_CHECK(false, "pybind11 casting not implemented for at::MemoryFormat.");
   }
 };
 
@@ -97,8 +123,11 @@ PYBIND11_MODULE(_C, m)
       .def("build_bool", &Function::build_bool)
       .def("build_optional_tensorlist", &Function::build_optional_tensorlist)
       .def("build_scalar_type", &Function::build_scalar_type)
-      .def("build_scalar_int", &Function::build_scalar)
+      .def("build_memory_format", &Function::build_memory_format)
       .def("build_vector_at_tensor", &Function::build_vector_at_tensor)
+
+      .def("build_scalar_int", &Function::build_scalar_int)
+      .def("build_scalar_float", &Function::build_scalar_float)
 
       // Build: scalar types.
       .def("build_int", &Function::build_int<int64_t>)
@@ -113,11 +142,14 @@ PYBIND11_MODULE(_C, m)
       .def("build_arrayref_lit_tensor", &Function::build_arrayref_lit<at::Tensor>)
 
       // Build: c10::nullopt.
+      .def("build_nullopt_bool", &Function::build_nullopt<bool>)
       .def("build_nullopt_int", &Function::build_nullopt<int64_t>)
       .def("build_nullopt_float", &Function::build_nullopt<double>)
       .def("build_nullopt_str", &Function::build_nullopt<c10::string_view>)
       .def("build_nullopt_scalar_type", &Function::build_nullopt<at::ScalarType>)
       .def("build_nullopt_memory_format", &Function::build_nullopt<at::MemoryFormat>)
+      .def("build_nullopt_layout", &Function::build_nullopt<at::Layout>)
+      .def("build_nullopt_layout", &Function::build_nullopt<at::Device>)
       .def("build_nullopt_generator", &Function::build_nullopt<at::Generator>)
       .def("build_nullopt_tensor", &Function::build_nullopt<at::Tensor>)
 
@@ -127,7 +159,9 @@ PYBIND11_MODULE(_C, m)
 
       // Build: c10::optional<T> for literal T.
       .def("build_optional_lit_int", &Function::build_optional_lit<int64_t>)
+      .def("build_optional_lit_float", &Function::build_optional_lit<double>)
       .def("build_optional_lit_scalar_type", &Function::build_optional_lit<at::ScalarType>)
+      .def("build_optional_lit_memory_format", &Function::build_optional_lit<at::MemoryFormat>)
 
       // Transform Function into JITFunction.
       .def("into_jit", &Function::into_jit);

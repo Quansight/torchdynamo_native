@@ -31,7 +31,7 @@ TEST(FunctionTest, AddTest)
     auto lhs = fn.set_placeholder(0, "lhs");
     auto rhs = fn.set_placeholder(1, "rhs");
 
-    auto alpha_ = fn.build_scalar(alpha);
+    auto alpha_ = fn.build_scalar_int(alpha);
     auto add = fn.add_call("add", "add.Tensor", {lhs, rhs, alpha_});
 
     fn.set_output(add);

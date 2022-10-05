@@ -88,9 +88,12 @@ public:
 
   Value build_scalar_type(at::ScalarType type);
 
-  Value build_scalar(int64_t n);
+  Value build_memory_format(at::MemoryFormat mf);
 
   Value build_vector_at_tensor(Value val, Value position);
+
+  Value build_scalar_int(int64_t n);
+  Value build_scalar_float(double n);
 
   template <typename T>
   Value build_int(T n);
