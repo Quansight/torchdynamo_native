@@ -3,8 +3,25 @@ import torch
 
 from collections import defaultdict
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Sequence, Tuple
-from torchgen.model import Argument, BaseTy, BaseType, FunctionSchema, ListType, NativeFunction, OptionalType, Type
+
+from typing import (
+    Any,
+    Dict,
+    List,
+    Optional,
+    Sequence
+)
+
+from torchgen.model import (
+    Argument,
+    BaseTy,
+    BaseType,
+    FunctionSchema,
+    ListType,
+    NativeFunction,
+    OptionalType,
+    Type
+)
 
 # Export torchdynamo_native symbols
 from torchdynamo_native._C import (
@@ -17,16 +34,13 @@ from torchdynamo_native.utils import (
     parse_native_functions_yaml
 )
 
-def function_add_call_wrapper(fn: Function, symbolname: str, opname: str, input, args, kwargs) -> Value:
-    assert operation_in_registry(opname), f"not found in JIT registry: {opname}"
-    v = fn.add_call(symbolname, opname, [])
-    return v
 
 @dataclass(frozen=True)
 class AlignedArg:
     param: Argument
     value: Any
-    default: bool =False
+    default: bool = False
+
 
 @dataclass(frozen=True)
 class OverloadInfo:
@@ -44,16 +58,21 @@ class OverloadInfo:
     def needed_arguments(self) -> int:
         return self.arguments - self.default_arguments
 
-def group_native_functions_overloads(native_functions: List[NativeFunction]) -> Dict[str, List[OverloadInfo]]:
+
+def group_native_functions_overloads(
+        native_functions: List[NativeFunction]
+) -> Dict[str, List[OverloadInfo]]:
     map_by_name = defaultdict(list)
     for f in native_functions:
         map_by_name[f.root_name].append(OverloadInfo(f))
     return map_by_name
 
+
 REDUCTION_MEAN = "Mean"
 
 NATIVE_FUNCTIONS, _ = parse_native_functions_yaml()
 NATIVE_FUNCTIONS_OVERLOAD_MAP = group_native_functions_overloads(NATIVE_FUNCTIONS)
+
 
 def str_to_py(thing: str, ty: Type) -> Any:
     """Parses the default string into a Python value.
@@ -113,15 +132,18 @@ def str_to_py(thing: str, ty: Type) -> Any:
 
     raise ValueError(f"can't build {ty} from str: {thing}")
 
+
 def nullopt_for_type(ty: Type, fn: Function) -> Value:
     if ty == BaseType(BaseTy.Tensor):
         return fn.build_nullopt_tensor()
     raise ValueError(f"can't build nullopt for type: {ty}")
 
+
 def opt_for_type(ty: Type, value: Value, fn: Function) -> Value:
     if ty == BaseType(BaseTy.int):
         return fn.build_optional_lit_int(value)
     raise ValueError(f"can't build optional for type: {ty}")
+
 
 def py_to_value(thing: Any, ty: Type, fn: Function) -> Value:
     """Translates a Python value into a Value.
@@ -172,6 +194,7 @@ def py_to_value(thing: Any, ty: Type, fn: Function) -> Value:
 
     raise ValueError(f"can't build value for {ty} from: {thing}")
 
+
 def torch_isinstance(thing: Any, ty: Type) -> bool:
     if ty == BaseType(BaseTy.Tensor):
         return isinstance(thing, torch.Tensor)
@@ -219,7 +242,12 @@ def torch_isinstance(thing: Any, ty: Type) -> bool:
     else:
         raise ValueError(f"couldn't check instance for type: {ty}")
 
-def align_and_flat_arguments(parameters: Sequence[Argument], args: Sequence[Any], kwargs: Dict[str, Any]) -> List[AlignedArg]:
+
+def align_and_flat_arguments(
+        parameters: Sequence[Argument],
+        args: Sequence[Any],
+        kwargs: Dict[str, Any]
+) -> List[AlignedArg]:
     """Aligns the formal parameters with the given arguments.
 
     Tries to align each formal parameter with its corresponding argument.
@@ -240,8 +268,12 @@ def align_and_flat_arguments(parameters: Sequence[Argument], args: Sequence[Any]
             # - A positional argument.
             #     - Can't have multiple arguments for a parameter.
             if param.name in kwargs:
-                raise ValueError(f"positional argument {param.name} also passed as keyword-argument.")
+                raise ValueError(
+                    f"positional argument {param.name} also passed as keyword-argument."
+                )
+
             return AlignedArg(param, args[i])
+
         elif param.name in kwargs:
             # - A keyword argument.
             return AlignedArg(param, kwargs[param.name])
@@ -254,7 +286,12 @@ def align_and_flat_arguments(parameters: Sequence[Argument], args: Sequence[Any]
 
     return [align_to_parameter(i, param) for i, param in enumerate(parameters)]
 
-def matches_function_schema(func: FunctionSchema, args: Sequence[Any], kwargs: Dict[str, Any]) -> bool:
+
+def matches_function_schema(
+        func: FunctionSchema,
+        args: Sequence[Any],
+        kwargs: Dict[str, Any]
+) -> bool:
     parameters = func.arguments.flat_all
 
     try:
@@ -284,6 +321,7 @@ def matches_function_schema(func: FunctionSchema, args: Sequence[Any], kwargs: D
 
     return True
 
+
 def find_operator_name(op_name: str, args: Sequence[Any], kwargs: Dict[str, Any]) -> Optional[str]:
     if op_name not in NATIVE_FUNCTIONS_OVERLOAD_MAP:
         raise ValueError(f"operation not in 'native_functions.yaml': {op_name}")
@@ -293,4 +331,3 @@ def find_operator_name(op_name: str, args: Sequence[Any], kwargs: Dict[str, Any]
             return str(ovl.f.func.name)
 
     return None
-
