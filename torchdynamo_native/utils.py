@@ -3,6 +3,7 @@ import torchgen
 
 from torchgen.gen import ParsedYaml, parse_native_yaml
 
+
 def parse_native_functions_yaml() -> ParsedYaml:
     # Torchgen base file.
     torchgen_init = torchgen.__file__

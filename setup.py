@@ -4,14 +4,14 @@ import os
 import json
 import warnings
 
-from typing import List, Optional, Sequence
-from setuptools import setup, Command
+from typing import Sequence
+from setuptools import setup
 from setuptools.extension import Extension
 
 from torch.utils.cpp_extension import CppExtension
 from torchgen.gen import parse_native_yaml
 from torchgen.model import NativeFunction, BaseType, BaseTy, ListType, OptionalType, Type
-from torchgen.utils import FileManager, mapMaybe
+from torchgen.utils import FileManager
 
 from helper.build.cmake import CMake
 from helper.build.setupext import (
@@ -53,12 +53,14 @@ SHARDS = 5
 # Code Generation Entry-Point ====================================================
 # ================================================================================
 
+
 def contains_blocklist_type(t: Type) -> bool:
     if isinstance(t, BaseType):
         return t in TYPE_BLOCKLIST
     if isinstance(t, OptionalType) or isinstance(t, ListType):
         return contains_blocklist_type(t.elem)
     assert False, f"unknown type: {t}"
+
 
 def filter_nativefunctions(native_functions: Sequence[NativeFunction]) -> Sequence[NativeFunction]:
     def predicate(f: NativeFunction) -> bool:
@@ -71,8 +73,12 @@ def filter_nativefunctions(native_functions: Sequence[NativeFunction]) -> Sequen
     # Ignore internal functions: those that start with '_'.
     return list(filter(predicate, native_functions))
 
+
 def gen_aten_ops() -> None:
-    native_functions, indices = parse_native_yaml(utils.get_native_functions_yaml_path(), utils.get_tags_yaml_path())
+    native_functions, indices = parse_native_yaml(
+        utils.get_native_functions_yaml_path(),
+        utils.get_tags_yaml_path()
+    )
     filtered_nativefunctions = filter_nativefunctions(native_functions)
 
     fm = FileManager(GENERATED_DIR, TEMPLATES_DIR, False)
@@ -108,14 +114,18 @@ def gen_aten_ops() -> None:
         }
     )
 
+
 # Actually call the code generation.
 gen_aten_ops()
 
 # ================================================================================
 # Build Process Setup ============================================================
 # ================================================================================
+
+
 def get_system_root() -> str:
     return os.path.dirname(os.path.dirname(sys.executable))
+
 
 def get_extension() -> Extension:
     include_dirs = []
@@ -155,6 +165,7 @@ def get_extension() -> Extension:
         ]
     )
 
+
 def generate_compile_commands(ext: Extension) -> None:
     compiler = sysconfig.get_config_var("CXX")
     include_dirs_args = [f"-I{directory}" for directory in ext.include_dirs]
@@ -183,6 +194,7 @@ def generate_compile_commands(ext: Extension) -> None:
     with open(os.path.join(ROOT_DIR, "compile_commands.json"), "w") as f:
         json.dump(obj, f, indent=4, sort_keys=True)
 
+
 cpp_extension = get_extension()
 generate_compile_commands(cpp_extension)
 
@@ -197,8 +209,8 @@ cmake = CMake(BUILD_DIR)
 cmake.run(ROOT_DIR, [
     f"--install-prefix={BUILD_DIR}/{PROJECT}",
     f"-DTORCH_DIR={TORCH_DIR}",
-    f"-DENABLE_TESTS=ON",
-    f"-DCMAKE_EXPORT_COMPILE_COMMANDS=ON",
+    "-DENABLE_TESTS=ON",
+    "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON",
 ])
 
 # ================================================================================
