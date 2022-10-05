@@ -113,9 +113,8 @@ def str_to_py(thing: str, ty: Type) -> Any:
             return str_to_py(thing, BaseType(BaseTy.float))
 
     elif ty == BaseType(BaseTy.MemoryFormat):
-        # Defer translation to Function.
         if (thing == "contiguous_format"):
-            return thing
+            return torch.contiguous_format
 
     elif isinstance(ty, OptionalType):
         if thing == "None":
@@ -134,14 +133,61 @@ def str_to_py(thing: str, ty: Type) -> Any:
 
 
 def nullopt_for_type(ty: Type, fn: Function) -> Value:
-    if ty == BaseType(BaseTy.Tensor):
+    if ty == BaseType(BaseTy.Generator):
+        return fn.build_nullopt_generator()
+
+    elif ty == BaseType(BaseTy.ScalarType):
+        return fn.build_nullopt_scalar_type()
+
+    elif ty == BaseType(BaseTy.Tensor):
         return fn.build_nullopt_tensor()
+
+    elif ty == BaseType(BaseTy.bool):
+        return fn.build_nullopt_bool()
+
+    elif ty == BaseType(BaseTy.int):
+        return fn.build_nullopt_int()
+
+    elif ty == BaseType(BaseTy.float):
+        return fn.build_nullopt_float()
+
+    elif ty == BaseType(BaseTy.str):
+        return fn.build_nullopt_str()
+
+    elif ty == BaseType(BaseTy.MemoryFormat):
+        return fn.build_nullopt_memory_format()
+
+    elif ty == BaseType(BaseTy.Device):
+        return fn.build_nullopt_device()
+
+    elif ty == BaseType(BaseTy.Layout):
+        return fn.build_nullopt_layout()
+
     raise ValueError(f"can't build nullopt for type: {ty}")
 
 
 def opt_for_type(ty: Type, value: Value, fn: Function) -> Value:
     if ty == BaseType(BaseTy.int):
         return fn.build_optional_lit_int(value)
+
+    elif ty == BaseType(BaseTy.float):
+        return fn.build_optional_lit_float(value)
+
+    elif ty == BaseType(BaseTy.MemoryFormat):
+        return fn.build_optional_lit_memory_format(value)
+
+    elif ty == BaseType(BaseTy.str):
+        return fn.build_optional_lit_str(value)
+
+    elif ty == BaseType(BaseTy.Scalar):
+        return fn.build_optional_scalar(value)
+
+    elif isinstance(ty, ListType):
+        elty = ty.elem
+
+        if elty == BaseType(BaseTy.int):
+            return fn.build_optional_arrayref_int(value)
+
     raise ValueError(f"can't build optional for type: {ty}")
 
 
@@ -151,19 +197,17 @@ def py_to_value(thing: Any, ty: Type, fn: Function) -> Value:
     if ty == BaseType(BaseTy.int):
         # Special case: at::Reduction.
         if thing == REDUCTION_MEAN:
-            # TODO return fn.build_integer_reduction_mean()
+            # TODO return fn.build_int_reduction_mean()
             pass
-
-        # Otherwise, we try to parse it into an int.
-        return fn.build_integer(thing)
+        else:
+            # Otherwise, we try to parse it into an int.
+            return fn.build_int(thing)
 
     elif ty == BaseType(BaseTy.float):
-        # TODO return fn.build_float(thing)
-        pass
+        return fn.build_float(thing)
 
     elif ty == BaseType(BaseTy.str):
-        # TODO return fn.build_str(thing)
-        pass
+        return fn.build_str(thing)
 
     elif ty == BaseType(BaseTy.bool):
         return fn.build_bool(thing)
@@ -172,14 +216,10 @@ def py_to_value(thing: Any, ty: Type, fn: Function) -> Value:
         if isinstance(thing, int):
             return fn.build_scalar_int(thing)
         else:
-            # TODO return fn.build_scalar_float(thing)
-            pass
+            return fn.build_scalar_float(thing)
 
     elif ty == BaseType(BaseTy.MemoryFormat):
-        # Defer translation to Function.
-        if (thing == "contiguous_format"):
-            # TODO return fn.build_memory_format_contiguous()
-            pass
+        return fn.build_memory_format(thing)
 
     elif isinstance(ty, OptionalType):
         if thing is None:
@@ -190,7 +230,7 @@ def py_to_value(thing: Any, ty: Type, fn: Function) -> Value:
 
     elif isinstance(ty, ListType):
         if ty.elem == BaseType(BaseTy.int):
-            return fn.build_arrayref_lit_int([fn.build_integer(x) for x in thing])
+            return fn.build_arrayref_lit_int([fn.build_int(x) for x in thing])
 
     raise ValueError(f"can't build value for {ty} from: {thing}")
 
@@ -239,8 +279,7 @@ def torch_isinstance(thing: Any, ty: Type) -> bool:
             and all(torch_isinstance(x, ty.elem) for x in thing)
         )
 
-    else:
-        raise ValueError(f"couldn't check instance for type: {ty}")
+    raise ValueError(f"couldn't check instance for type: {ty}")
 
 
 def align_and_flat_arguments(

@@ -45,6 +45,14 @@ template <typename T, typename Tp = void>
 struct IsABIMemoryClass : public std::false_type {
 };
 
+template <>
+struct IsABIMemoryClass<at::Scalar> : public std::true_type {
+};
+
+template <>
+struct IsABIMemoryClass<c10::optional<c10::string_view>> : public std::true_type {
+};
+
 template <typename T>
 struct IsABIMemoryClass<c10::optional<T>, std::enable_if_t<IsABIMemoryClass<T>::value>>
     : public std::true_type {
@@ -59,10 +67,6 @@ struct IsABIMemoryClass<
          !std::is_trivially_destructible<T>::value)>> : public std::true_type {
 };
 
-template <>
-struct IsABIMemoryClass<at::Scalar> : public std::true_type {
-};
-
 // Types in the MEMORY class can be passed as argument in 2 different ways:
 //
 //   1. Passing the pointer address in a register. Observed when the aggregate
@@ -74,14 +78,14 @@ struct IsABIMemoryClass<at::Scalar> : public std::true_type {
 // Not entirely sure why that is the case, but that's how GCC and LLVM
 // appear to work.
 
-template <typename T, typename Tp = void>
+template <typename T>
 struct IsCopiedToStack : std::false_type {
 };
 
 // at::Scalar is the only type used in PyTorch operations, that is bigger
 // than 2 registers ("eightbytes").
-template <typename T>
-struct IsCopiedToStack<T, std::enable_if_t<std::is_same<T, at::Scalar>::value>> : std::true_type {
+template <>
+struct IsCopiedToStack<at::Scalar> : std::true_type {
 };
 
 // Some function types are translated slightly different for the

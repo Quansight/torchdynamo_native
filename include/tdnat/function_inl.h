@@ -38,11 +38,12 @@ Value Function::_build_scalar(Value val)
 template <typename T, typename Factory>
 Value Function::_build_optional(c10::optional<Value> val)
 {
+  constexpr bool is_memory_class = IsABIMemoryClass<c10::optional<T>>::value;
   auto fn = _add_factory_decl<Factory>();
 
   std::vector<llvm::Value *> args;
 
-  if (IsABIMemoryClass<T>::value) {
+  if (is_memory_class) {
     auto alloca = builder_.CreateAlloca(_get_type<c10::optional<T>>());
     args.push_back(alloca);
   }
@@ -53,7 +54,7 @@ Value Function::_build_optional(c10::optional<Value> val)
 
   auto call = builder_.CreateCall(fn, args);
 
-  if (IsABIMemoryClass<T>::value) {
+  if (is_memory_class) {
     return {args[0]};
   } else {
     return {call};
@@ -94,6 +95,14 @@ Value Function::build_int(T n)
   static_assert(std::is_integral<T>::value);
   _check_finalized();
   return {builder_.getIntN(sizeof(T) * 8, n)};
+}
+
+template <typename T>
+Value Function::build_float(T n)
+{
+  static_assert(std::is_floating_point<T>::value);
+  _check_finalized();
+  return {llvm::ConstantFP::get(*ctx_, llvm::APFloat(n))};
 }
 
 template <typename T>

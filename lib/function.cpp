@@ -167,6 +167,18 @@ Value Function::build_bool(bool b)
   return {builder_.getInt1(b)};
 }
 
+Value Function::build_str(const std::string &s)
+{
+  _check_finalized();
+
+  auto string_view_fn = _add_factory_decl<factory::StringView>();
+
+  auto str = builder_.CreateGlobalStringPtr(s);
+  auto sview = builder_.CreateCall(string_view_fn, {str});
+
+  return {sview};
+}
+
 Value Function::build_optional_tensorlist(const std::vector<Value> &v)
 {
   using OptionalTensor = c10::optional<at::Tensor>;
@@ -196,10 +208,22 @@ Value Function::build_scalar_type(at::ScalarType type)
   return {build_int(static_cast<int8_t>(type))};
 }
 
-Value Function::build_scalar(int64_t n)
+Value Function::build_memory_format(at::MemoryFormat mf)
+{
+  _check_finalized();
+  return {build_int(static_cast<int8_t>(mf))};
+}
+
+Value Function::build_scalar_int(int64_t n)
 {
   _check_finalized();
   return _build_scalar<int64_t>({builder_.getInt64(n)});
+}
+
+Value Function::build_scalar_float(double n)
+{
+  _check_finalized();
+  return _build_scalar<double>({llvm::ConstantFP::get(*ctx_, llvm::APFloat(n))});
 }
 
 struct VectorAtTensor {
