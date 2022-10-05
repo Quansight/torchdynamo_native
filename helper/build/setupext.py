@@ -33,7 +33,7 @@ class build_ext(CMakeRecipe, setup_build_ext):
             if not is_cmake_extension(ext)
         ]
 
-        if any(is_cmake_extension(ext) for ext in self.extensions):  # type: ignore
+        if len(fallback_extensions) != len(self.extensions):  # type: ignore
             try:
                 self.cmake().build()
                 self.cmake().install()

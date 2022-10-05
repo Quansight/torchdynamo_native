@@ -7,7 +7,6 @@ import warnings
 from typing import Sequence
 from setuptools import setup
 from setuptools.extension import Extension
-from setuptools.command.build_ext import build_ext
 
 from torch.utils.cpp_extension import CppExtension
 from torchgen.gen import parse_native_yaml
@@ -16,6 +15,7 @@ from torchgen.utils import FileManager
 
 from helper.build.cmake import CMake
 from helper.build.setupext import (
+    build_ext,
     clean,
     CMakeExtension,
     wrap_with_cmake_instance
