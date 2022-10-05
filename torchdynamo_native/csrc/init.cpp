@@ -51,11 +51,13 @@ public:
 } // namespace detail
 } // namespace pybind11
 
+// Wrapper around nat::Function constructor.
 static Function function_init(const std::string &id, size_t in_tensors, size_t out_tensors)
 {
   return {{id, in_tensors, out_tensors}};
 }
 
+// Wrapper around nat::JITFunction::run.
 static std::vector<at::Tensor>
 jitfunction_run(JITFunction &jitfn, const std::vector<at::Tensor> &tensors)
 {
@@ -80,12 +82,15 @@ PYBIND11_MODULE(_C, m)
   py::class_<Function>(m, "Function")
       .def(py::init(&function_init))
 
+      // Input & Output.
       .def("set_placeholder", &Function::set_placeholder)
       .def("set_output", &Function::set_output)
       .def("set_outputs", &Function::set_outputs)
 
+      // Operator call.
       .def("add_call", &Function::add_call)
 
+      // Post-construction.
       .def("dump", &Function::dump)
       .def("finalize", &Function::finalize)
 
@@ -95,19 +100,36 @@ PYBIND11_MODULE(_C, m)
       .def("build_scalar_int", &Function::build_scalar)
       .def("build_vector_at_tensor", &Function::build_vector_at_tensor)
 
+      // Build: scalar types.
       .def("build_int", &Function::build_int<int64_t>)
+      .def("build_float", &Function::build_float<double>)
 
+      // Build: ArrayRef<T> for in-memory T.
       .def("build_arrayref_int", &Function::build_arrayref<int64_t>)
       .def("build_arrayref_tensor", &Function::build_arrayref<at::Tensor>)
+
+      // Build: ArrayRef<T> for literal T.
       .def("build_arrayref_lit_int", &Function::build_arrayref_lit<int64_t>)
       .def("build_arrayref_lit_tensor", &Function::build_arrayref_lit<at::Tensor>)
 
+      // Build: c10::nullopt.
+      .def("build_nullopt_int", &Function::build_nullopt<int64_t>)
+      .def("build_nullopt_float", &Function::build_nullopt<double>)
+      .def("build_nullopt_str", &Function::build_nullopt<c10::string_view>)
+      .def("build_nullopt_scalar_type", &Function::build_nullopt<at::ScalarType>)
+      .def("build_nullopt_memory_format", &Function::build_nullopt<at::MemoryFormat>)
+      .def("build_nullopt_generator", &Function::build_nullopt<at::Generator>)
       .def("build_nullopt_tensor", &Function::build_nullopt<at::Tensor>)
 
+      // Build: c10::optional<T> for in-memory T.
       .def("build_optional_tensor", &Function::build_optional<at::Tensor>)
+      .def("build_optional_arrayref_int", &Function::build_optional<at::IntArrayRef>)
+
+      // Build: c10::optional<T> for literal T.
       .def("build_optional_lit_int", &Function::build_optional_lit<int64_t>)
       .def("build_optional_lit_scalar_type", &Function::build_optional_lit<at::ScalarType>)
 
+      // Transform Function into JITFunction.
       .def("into_jit", &Function::into_jit);
 
   py::class_<JITFunction>(m, "JITFunction")

@@ -94,6 +94,8 @@ public:
 
   template <typename T>
   Value build_int(T n);
+  template <typename T>
+  Value build_float(T n);
 
   template <typename T>
   Value build_arrayref(const std::vector<Value> &v);

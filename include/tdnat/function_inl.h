@@ -97,6 +97,14 @@ Value Function::build_int(T n)
 }
 
 template <typename T>
+Value Function::build_float(T n)
+{
+  static_assert(std::is_floating_point<T>::value);
+  _check_finalized();
+  return {llvm::ConstantFP::get(*ctx_, llvm::APFloat(n))};
+}
+
+template <typename T>
 Value Function::build_arrayref(const std::vector<Value> &v)
 {
   _check_finalized();
