@@ -63,6 +63,27 @@ template <>
 struct IsABIMemoryClass<at::Scalar> : public std::true_type {
 };
 
+// Types in the MEMORY class can be passed as argument in 2 different ways:
+//
+//   1. Passing the pointer address in a register. Observed when the aggregate
+//      type has either a non-trivial constructor or destructor.
+//
+//   2. Copying the whole data to the stack. Observed when the aggregate type
+//      is bigger than 2 registers (on System V ABI).
+//
+// Not entirely sure why that is the case, but that's how GCC and LLVM
+// appear to work.
+
+template <typename T, typename Tp = void>
+struct IsCopiedToStack : std::false_type {
+};
+
+// at::Scalar is the only type used in PyTorch operations, that is bigger
+// than 2 registers ("eightbytes").
+template <typename T>
+struct IsCopiedToStack<T, std::enable_if_t<std::is_same<T, at::Scalar>::value>> : std::true_type {
+};
+
 // Some function types are translated slightly different for the
 // SystemV ABI.
 //

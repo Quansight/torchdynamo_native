@@ -63,7 +63,8 @@ void add_attributes(llvm::Function *fn)
 
   // Add the 'byval' attribute for parameters that should be
   // passed on the stack.
-  auto is_byval_type = std::vector<bool>{IsABIMemoryClass<Args>::value...};
+  auto is_byval_type =
+      std::vector<bool>{(IsABIMemoryClass<Args>::value && IsCopiedToStack<Args>::value)...};
   auto types = std::vector<llvm::Type *>{LLVMType<Args>::get(mod)...};
   for (size_t i = 0; i < is_byval_type.size(); i++) {
     if (is_byval_type[i]) {
