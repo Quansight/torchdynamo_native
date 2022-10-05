@@ -65,7 +65,7 @@ Value Function::_build_arrayref(const std::vector<Value> &vals, bool from_litera
 {
   auto fn = _add_factory_decl<factory::ArrayRef<T>>();
 
-  auto size = build_integer(vals.size()).val_;
+  auto size = build_int(vals.size()).val_;
   auto alloca = builder_.CreateAlloca(_get_type<T>(), size);
 
   for (size_t i = 0; i < vals.size(); i++) {
@@ -89,8 +89,9 @@ llvm::Type *Function::_get_type()
 }
 
 template <typename T>
-Value Function::build_integer(T n)
+Value Function::build_int(T n)
 {
+  static_assert(std::is_integral<T>::value);
   _check_finalized();
   return {builder_.getIntN(sizeof(T) * 8, n)};
 }

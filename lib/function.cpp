@@ -1,4 +1,3 @@
-#include <memory>
 #include <tdnat/function.h>
 #include <tdnat/llvm_function_type.h>
 
@@ -11,6 +10,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <iterator>
+#include <memory>
 #include <sstream>
 #include <utility>
 
@@ -175,7 +175,7 @@ Value Function::build_optional_tensorlist(const std::vector<Value> &v)
 
   auto optional_tensorlist_fn = _add_factory_decl<factory::OptionalTensorList>();
 
-  auto size = build_integer(v.size()).val_;
+  auto size = build_int(v.size()).val_;
   auto alloca = builder_.CreateAlloca(_get_type<OptionalTensor>(), size);
   auto alloca_ret = builder_.CreateAlloca(_get_type<c10::List<OptionalTensor>>());
 
@@ -193,7 +193,7 @@ Value Function::build_optional_tensorlist(const std::vector<Value> &v)
 Value Function::build_scalar_type(at::ScalarType type)
 {
   _check_finalized();
-  return {build_integer(static_cast<int8_t>(type))};
+  return {build_int(static_cast<int8_t>(type))};
 }
 
 Value Function::build_scalar(int64_t n)

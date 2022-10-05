@@ -95,7 +95,7 @@ PYBIND11_MODULE(_C, m)
       .def("build_scalar_int", &Function::build_scalar)
       .def("build_vector_at_tensor", &Function::build_vector_at_tensor)
 
-      .def("build_integer", &Function::build_integer<int64_t>)
+      .def("build_int", &Function::build_int<int64_t>)
 
       .def("build_arrayref_int", &Function::build_arrayref<int64_t>)
       .def("build_arrayref_tensor", &Function::build_arrayref<at::Tensor>)

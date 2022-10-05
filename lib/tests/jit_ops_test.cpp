@@ -14,6 +14,7 @@
 #include <ATen/ops/cat.h>
 #include <ATen/ops/chunk.h>
 #include <ATen/ops/index.h>
+#include <ATen/ops/multinomial.h>
 #include <ATen/ops/randint.h>
 #include <ATen/ops/sum.h>
 
@@ -89,7 +90,7 @@ TEST(JITTest, AddTest)
   using FnType = at::Tensor (*)(const at::Tensor &, const at::Tensor &, const at::Scalar &);
 
   auto jit = create_jit(static_cast<FnType>(at::add));
-  auto symbol = llvm::cantFail(jit->lookup(WrappedFn));
+  auto symbol = llvm::cantFail(jit->lookup(EntryFn));
 
   // NOLINTNEXTLINE(performance-no-int-to-ptr)
   auto func = reinterpret_cast<void *>(symbol.getAddress());
@@ -110,7 +111,7 @@ TEST(JITTest, CatTest)
   using FnType = at::Tensor (*)(at::ArrayRef<at::Tensor>, int64_t);
 
   auto jit = create_jit(static_cast<FnType>(at::cat));
-  auto symbol = llvm::cantFail(jit->lookup(WrappedFn));
+  auto symbol = llvm::cantFail(jit->lookup(EntryFn));
 
   // NOLINTNEXTLINE(performance-no-int-to-ptr)
   auto func = reinterpret_cast<void *>(symbol.getAddress());
@@ -130,7 +131,7 @@ TEST(JITTest, IndexTest)
   using FnType = at::Tensor (*)(const at::Tensor &, const c10::List<c10::optional<at::Tensor>> &);
 
   auto jit = create_jit(static_cast<FnType>(at::index));
-  auto symbol = llvm::cantFail(jit->lookup(WrappedFn));
+  auto symbol = llvm::cantFail(jit->lookup(EntryFn));
 
   // NOLINTNEXTLINE(performance-no-int-to-ptr)
   auto func = reinterpret_cast<void *>(symbol.getAddress());
@@ -154,7 +155,7 @@ TEST(JITTest, ArgMinTest)
   using FnType = at::Tensor (*)(const at::Tensor &, c10::optional<int64_t>, bool);
 
   auto jit = create_jit(static_cast<FnType>(at::argmin));
-  auto symbol = llvm::cantFail(jit->lookup(WrappedFn));
+  auto symbol = llvm::cantFail(jit->lookup(EntryFn));
 
   // NOLINTNEXTLINE(performance-no-int-to-ptr)
   auto func = reinterpret_cast<void *>(symbol.getAddress());
@@ -176,7 +177,7 @@ TEST(JITTest, SumTest)
       at::Tensor (*)(const at::Tensor &, at::IntArrayRef, bool, c10::optional<at::ScalarType>);
 
   auto jit = create_jit(static_cast<FnType>(at::sum));
-  auto symbol = llvm::cantFail(jit->lookup(WrappedFn));
+  auto symbol = llvm::cantFail(jit->lookup(EntryFn));
 
   // NOLINTNEXTLINE(performance-no-int-to-ptr)
   auto func = reinterpret_cast<void *>(symbol.getAddress());
@@ -198,7 +199,7 @@ TEST(JITTest, ChunkTest)
   using FnType = std::vector<at::Tensor> (*)(const at::Tensor &, int64_t, int64_t);
 
   auto jit = create_jit(static_cast<FnType>(at::chunk));
-  auto symbol = llvm::cantFail(jit->lookup(WrappedFn));
+  auto symbol = llvm::cantFail(jit->lookup(EntryFn));
 
   // NOLINTNEXTLINE(performance-no-int-to-ptr)
   auto func = reinterpret_cast<void *>(symbol.getAddress());
@@ -216,5 +217,29 @@ TEST(JITTest, ChunkTest)
   for (size_t i = 0; i < size; i++) {
     ASSERT_TRUE(expect[i].equal(result[i]));
   }
+}
+
+// NOLINTNEXTLINE
+TEST(JITTest, MultinomialTest)
+{
+  using FnType = at::Tensor (*)(const at::Tensor &, int64_t, bool, c10::optional<at::Generator>);
+
+  auto jit = create_jit(static_cast<FnType>(at::multinomial));
+  auto symbol = llvm::cantFail(jit->lookup(EntryFn));
+
+  // NOLINTNEXTLINE(performance-no-int-to-ptr)
+  auto func = reinterpret_cast<void *>(symbol.getAddress());
+
+  auto tensor = at::randint(10, {10}); // NOLINT(cppcoreguidelines-avoid-magic-numbers)
+  auto samples = 4;
+  auto replacement = false;
+  auto generator = c10::optional<at::Generator>(c10::nullopt);
+
+  auto result = (reinterpret_cast<FnType>(func))(tensor, samples, replacement, generator);
+  auto expect = at::multinomial(tensor, samples, replacement, generator);
+
+  ASSERT_EQ(expect.sizes(), result.sizes());
+  ASSERT_EQ(expect.scalar_type(), result.scalar_type());
+  ASSERT_EQ(expect.device(), result.device());
 }
 // NOLINTEND(cppcoreguidelines-avoid-magic-numbers)

@@ -9,6 +9,7 @@
 #include <ATen/ops/cat.h>
 #include <ATen/ops/chunk.h>
 #include <ATen/ops/index.h>
+#include <ATen/ops/multinomial.h>
 #include <ATen/ops/randint.h>
 #include <ATen/ops/sum.h>
 
@@ -59,7 +60,7 @@ TEST(FunctionTest, CatTest)
     auto t1 = fn.set_placeholder(0, "t1");
     auto t2 = fn.set_placeholder(1, "t2");
 
-    auto dim_ = fn.build_integer<int64_t>(dim);
+    auto dim_ = fn.build_int<int64_t>(dim);
     auto tensorlist = fn.build_arrayref<at::Tensor>({t1, t2});
     auto cat = fn.add_call("cat", "cat", {tensorlist, dim_});
 
@@ -125,7 +126,7 @@ TEST(FunctionTest, ArgMinTest)
   {
     auto tensor = fn.set_placeholder(0, "tensor");
 
-    auto dim_ = fn.build_integer<int64_t>(dim);
+    auto dim_ = fn.build_int<int64_t>(dim);
     auto dim_opt = fn.build_optional_lit<int64_t>(dim_);
     auto keepdim_ = fn.build_bool(keepdim);
 
@@ -159,7 +160,7 @@ TEST(FunctionTest, SumTest)
 
     auto dim_ = std::vector<tdnat::Value>{};
     std::transform(dim.begin(), dim.end(), std::back_inserter(dim_), [&](long i) {
-      return fn.build_integer<int64_t>(i);
+      return fn.build_int<int64_t>(i);
     });
     auto dim_array = fn.build_arrayref_lit<int64_t>(dim_);
 
@@ -195,14 +196,14 @@ TEST(FunctionTest, ChunkTest)
   {
     auto tensor = fn.set_placeholder(0, "tensor");
 
-    auto chunks_ = fn.build_integer<int64_t>(chunks);
-    auto dim_ = fn.build_integer<int64_t>(dim);
+    auto chunks_ = fn.build_int<int64_t>(chunks);
+    auto dim_ = fn.build_int<int64_t>(dim);
 
     auto chunk = fn.add_call("chunk", "chunk", {tensor, chunks_, dim_});
 
     std::vector<tdnat::Value> values;
     for (size_t i = 0; i < chunks; i++) {
-      values.push_back(fn.build_vector_at_tensor(chunk, fn.build_integer(i)));
+      values.push_back(fn.build_vector_at_tensor(chunk, fn.build_int(i)));
     }
 
     fn.set_outputs(values);
@@ -216,4 +217,38 @@ TEST(FunctionTest, ChunkTest)
   for (size_t i = 0; i < chunks; i++) {
     ASSERT_TRUE(expect[i].equal(result[i]));
   }
+}
+
+// NOLINTNEXTLINE
+TEST(FunctionTest, MultinomialTest)
+{
+  auto data = tdnat::FunctionData{"aten_multinomial", 1, 1};
+  tdnat::Function fn(data);
+
+  auto tensor = at::randint(10, {10}); // NOLINT(cppcoreguidelines-avoid-magic-numbers)
+  auto samples = 4;
+  auto replacement = false;
+  auto generator = c10::optional<at::Generator>(c10::nullopt);
+  auto expect = at::multinomial(tensor, samples, replacement, generator);
+
+  {
+    auto tensor = fn.set_placeholder(0, "tensor");
+
+    auto samples_ = fn.build_int<int64_t>(samples);
+    auto replacement_ = fn.build_bool(replacement);
+    auto generator = fn.build_nullopt<at::Generator>();
+
+    auto result =
+        fn.add_call("multinomial", "multinomial", {tensor, samples_, replacement_, generator});
+
+    fn.set_output(result);
+    fn.finalize();
+  }
+
+  auto jitfn = fn.into_jit();
+  auto result = jitfn.run({tensor});
+
+  ASSERT_EQ(expect.sizes(), result[0].sizes());
+  ASSERT_EQ(expect.scalar_type(), result[0].scalar_type());
+  ASSERT_EQ(expect.device(), result[0].device());
 }

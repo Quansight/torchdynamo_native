@@ -93,7 +93,7 @@ public:
   Value build_vector_at_tensor(Value val, Value position);
 
   template <typename T>
-  Value build_integer(T n);
+  Value build_int(T n);
 
   template <typename T>
   Value build_arrayref(const std::vector<Value> &v);
