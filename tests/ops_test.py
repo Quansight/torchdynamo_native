@@ -48,12 +48,26 @@ SKIP_LIST = [
     ("corrcoef", "non-deterministic behavior"),
     ("cov", "non-deterministic behavior"),
     ("where", "input is not the first argument"),
+
     ("multinomial", "non-deterministic operator"),
+    ("randn", "non-deterministic operator"),
+    ("randn_like", "non-deterministic operator"),
+    ("randint", "non-deterministic operator"),
+    ("randint_like", "non-deterministic operator"),
+    ("rand", "non-deterministic operator"),
+    ("rand_like", "non-deterministic operator"),
+    ("normal", "non-deterministic operator"),
+    ("empty", "non-deterministic operator"),
+    ("empty_like", "non-deterministic operator"),
+    ("new_empty", "non-deterministic operator"),
+    ("bernoulli", "non-deterministic operator"),
 
     ("as_strided_scatter", "segfault"),
     ("searchsorted", "segfault"),
     ("istft", "segfault"),
     ("stft", "segfault"),
+    ("nanquantile", "segfault"),
+    ("quantile", "segfault"),
 ]
 
 
