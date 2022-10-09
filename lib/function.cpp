@@ -167,6 +167,18 @@ Value Function::build_bool(bool b)
   return {builder_.getInt1(b)};
 }
 
+Value Function::build_str(const std::string &s)
+{
+  _check_finalized();
+
+  auto string_view_fn = _add_factory_decl<factory::StringView>();
+
+  auto str = builder_.CreateGlobalStringPtr(s);
+  auto sview = builder_.CreateCall(string_view_fn, {str});
+
+  return {sview};
+}
+
 Value Function::build_optional_tensorlist(const std::vector<Value> &v)
 {
   using OptionalTensor = c10::optional<at::Tensor>;

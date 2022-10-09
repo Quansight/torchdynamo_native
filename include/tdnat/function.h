@@ -84,6 +84,8 @@ public:
 
   Value build_bool(bool b);
 
+  Value build_str(const std::string& s);
+
   Value build_optional_tensorlist(const std::vector<Value> &v);
 
   Value build_scalar_type(at::ScalarType type);

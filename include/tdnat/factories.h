@@ -90,7 +90,20 @@ struct OptionalTensorList {
 
   static c10::List<c10::optional<at::Tensor>> create(c10::optional<at::Tensor> *list, size_t size)
   {
+    // Constructor is marked as explicit.
     return c10::List<c10::optional<at::Tensor>>{{list, size}};
+  }
+};
+
+struct StringView {
+  static std::string name()
+  {
+    return "StringView";
+  }
+
+  static c10::string_view create(const char *str)
+  {
+    return {str};
   }
 };
 

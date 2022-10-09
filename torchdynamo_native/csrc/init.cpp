@@ -121,6 +121,7 @@ PYBIND11_MODULE(_C, m)
       .def("finalize", &Function::finalize)
 
       .def("build_bool", &Function::build_bool)
+      .def("build_str", &Function::build_str)
       .def("build_optional_tensorlist", &Function::build_optional_tensorlist)
       .def("build_scalar_type", &Function::build_scalar_type)
       .def("build_memory_format", &Function::build_memory_format)
@@ -149,17 +150,19 @@ PYBIND11_MODULE(_C, m)
       .def("build_nullopt_scalar_type", &Function::build_nullopt<at::ScalarType>)
       .def("build_nullopt_memory_format", &Function::build_nullopt<at::MemoryFormat>)
       .def("build_nullopt_layout", &Function::build_nullopt<at::Layout>)
-      .def("build_nullopt_layout", &Function::build_nullopt<at::Device>)
+      .def("build_nullopt_device", &Function::build_nullopt<at::Device>)
       .def("build_nullopt_generator", &Function::build_nullopt<at::Generator>)
       .def("build_nullopt_tensor", &Function::build_nullopt<at::Tensor>)
 
       // Build: c10::optional<T> for in-memory T.
       .def("build_optional_tensor", &Function::build_optional<at::Tensor>)
       .def("build_optional_arrayref_int", &Function::build_optional<at::IntArrayRef>)
+      .def("build_optional_scalar", &Function::build_optional<at::Scalar>)
 
       // Build: c10::optional<T> for literal T.
       .def("build_optional_lit_int", &Function::build_optional_lit<int64_t>)
       .def("build_optional_lit_float", &Function::build_optional_lit<double>)
+      .def("build_optional_lit_str", &Function::build_optional_lit<c10::string_view>)
       .def("build_optional_lit_scalar_type", &Function::build_optional_lit<at::ScalarType>)
       .def("build_optional_lit_memory_format", &Function::build_optional_lit<at::MemoryFormat>)
 
