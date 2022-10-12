@@ -44,6 +44,8 @@ TYPE_BLOCKLIST = [
     BaseType(BaseTy.DimVector),
     BaseType(BaseTy.QScheme),
     BaseType(BaseTy.SymInt),
+    BaseType(BaseTy.Storage),
+    BaseType(BaseTy.Stream),
     ListType(BaseType(BaseTy.SymInt), None),
 ]
 
@@ -83,12 +85,32 @@ def gen_aten_ops() -> None:
 
     fm = FileManager(GENERATED_DIR, TEMPLATES_DIR, False)
 
+    def native_function_key(f: NativeFunction) -> str:
+        return f.root_name
+
+    fm.write_sharded(
+        filename="c_abi_wrappers.h",
+        items=filtered_nativefunctions,
+        key_fn=native_function_key,
+        env_callable=lambda fn: {
+            "ops_include": [regfn.include(fn, indices)],
+            "c_abi_wrapper_functions": [regfn.c_abi(fn, indices)],
+        },
+        num_shards=SHARDS,
+        base_env={
+            "generator_file": __file__,
+        },
+        sharded_keys={
+            "ops_include",
+            "c_abi_wrapper_functions",
+        }
+    )
+
     fm.write_sharded(
         filename="register_function.cpp",
         items=filtered_nativefunctions,
         key_fn=lambda fn: fn.root_name,
         env_callable=lambda fn: {
-            "ops_include": [regfn.include(fn, indices)],
             "ops_entry": [regfn.insert_entry(fn, indices)],
         },
         num_shards=SHARDS,
@@ -98,7 +120,6 @@ def gen_aten_ops() -> None:
             "register_function_parameters": regfn.parameters()
         },
         sharded_keys={
-            "ops_include",
             "ops_entry"
         }
     )

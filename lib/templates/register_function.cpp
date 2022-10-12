@@ -1,9 +1,6 @@
 // generated from: ${generator_file}
 
-#include <ATen/core/TensorBody.h>
-#include <tdnat/ops_util.h>
-
-${ops_include}
+#include "c_abi_wrappers${shard_id}.h"
 
 namespace tdnat
 {
