@@ -1,8 +1,9 @@
 from distutils.command.clean import clean as setup_clean
-from helper.build.cmake import CMake
 from setuptools.command.build_ext import build_ext as setup_build_ext
 from setuptools.extension import Extension
 from typing import Type
+
+from torchdynamo_native.buildhelper.build.cmake import CMake
 
 
 class CMakeExtension(Extension):

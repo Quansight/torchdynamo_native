@@ -13,14 +13,14 @@ from torchgen.gen import parse_native_yaml
 from torchgen.model import NativeFunction, BaseType, BaseTy, ListType, OptionalType, Type
 from torchgen.utils import FileManager
 
-from helper.build.cmake import CMake
-from helper.build.setupext import (
+from torchdynamo_native.buildhelper.build.cmake import CMake
+from torchdynamo_native.buildhelper.build.setupext import (
     build_ext,
     clean,
     CMakeExtension,
     wrap_with_cmake_instance
 )
-from helper.codegen import regfn, glregfn, utils
+from torchdynamo_native.buildhelper.codegen import regfn, glregfn, utils
 
 # ================================================================================
 # Static Variables ===============================================================

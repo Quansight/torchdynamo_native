@@ -40,7 +40,7 @@ DTYPE_SET = {
     torch.complex64,
 }
 
-NATIVE_FUNCTIONS, _ = nat.parse_native_functions_yaml()
+NATIVE_FUNCTIONS, _ = nat.utils.parse_native_functions_yaml()
 NATIVE_FUNCTIONS_MAP: Dict[str, NativeFunction] = {str(f.func.name): f for f in NATIVE_FUNCTIONS}
 
 SKIP_LIST = [
