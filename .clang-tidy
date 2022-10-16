@@ -11,6 +11,8 @@ Checks: |
   cppcoreguidelines-*,
   -cppcoreguidelines-pro-type-reinterpret-cast,
   -cppcoreguidelines-pro-bounds-array-to-pointer-decay,
+  -cppcoreguidelines-owning-memory,
+  -cppcoreguidelines-macro-usage,
   modernize-*,
   -modernize-use-trailing-return-type,
   performance-*,

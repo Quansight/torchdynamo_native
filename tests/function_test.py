@@ -26,11 +26,11 @@ class SpecAdd(Spec):
         lhs = fn.set_placeholder(0, "lhs")
         rhs = fn.set_placeholder(1, "rhs")
 
-        alpha_ = fn.build_scalar_int(self.alpha)
+        alpha_ = fn.build_int(self.alpha)
+        alpha_ = fn.build_scalar_int(alpha_)
         add = fn.add_call("add", "add.Tensor", [lhs, rhs, alpha_])
 
         fn.set_output(add)
-        fn.finalize()
         return fn.into_jit()([self.lhs, self.rhs])
 
 
@@ -50,11 +50,14 @@ class SpecCat(Spec):
         t2 = fn.set_placeholder(1, "t2")
 
         dim = fn.build_int(self.dim)
-        tensorlist = fn.build_arrayref_tensor([t1, t2])
-        cat = fn.add_call("cat", "cat", [tensorlist, dim])
+        tensorlist_ptr = fn.build_array_tensor([
+            fn.build_load(t1),
+            fn.build_load(t2),
+        ])
+        tensorlist_size = fn.build_int(2)
+        cat = fn.add_call("cat", "cat", [tensorlist_ptr, tensorlist_size, dim])
 
         fn.set_output(cat)
-        fn.finalize()
         return fn.into_jit()([self.t1, self.t2])
 
 
@@ -75,15 +78,15 @@ class SpecIndex(Spec):
         i1 = fn.set_placeholder(1, "i1")
         i2 = fn.set_placeholder(2, "i2")
 
-        nullopt = fn.build_nullopt_tensor()
-        i1_opt = fn.build_optional_tensor(i1)
-        i2_opt = fn.build_optional_tensor(i2)
-        indices = fn.build_optional_tensorlist([nullopt, i1_opt, i2_opt])
+        indices = fn.build_list_optional_tensor([
+            fn.build_load(fn.build_nullopt_tensor()),
+            fn.build_load(fn.build_optional_tensor(i1)),
+            fn.build_load(fn.build_optional_tensor(i2)),
+        ])
 
         index = fn.add_call("index", "index.Tensor", [tensor, indices])
 
         fn.set_output(index)
-        fn.finalize()
         return fn.into_jit()([self.tensor, self.i0, self.i1])
 
 
@@ -102,13 +105,12 @@ class SpecArgMin(Spec):
         tensor = fn.set_placeholder(0, "tensor")
 
         dim = fn.build_int(self.dim)
-        dim_opt = fn.build_optional_lit_int(dim)
+        dim_opt = fn.build_optional_int(dim)
         keepdim = fn.build_bool(self.keepdim)
 
         argmin = fn.add_call("argmin", "argmin", [tensor, dim_opt, keepdim])
 
         fn.set_output(argmin)
-        fn.finalize()
         return fn.into_jit()([self.tensor])
 
 
@@ -127,18 +129,17 @@ class SpecSum(Spec):
 
         tensor = fn.set_placeholder(0, "tensor")
 
-        dim_values = [fn.build_int(d) for d in self.dim]
-        dim = fn.build_arrayref_lit_int(dim_values)
+        dim_ptr = fn.build_array_int([fn.build_int(d) for d in self.dim])
+        dim_size = fn.build_int(len(self.dim))
 
-        dtype = fn.build_scalar_type(self.dtype)
-        dtype_opt = fn.build_optional_lit_scalar_type(dtype)
+        dtype = fn.build_int_from_scalar_type(self.dtype)
+        dtype_opt = fn.build_optional_scalar_type(dtype)
 
         keepdim = fn.build_bool(self.keepdim)
 
-        sum = fn.add_call("sum", "sum.dim_IntList", [tensor, dim, keepdim, dtype_opt])
+        sum = fn.add_call("sum", "sum.dim_IntList", [tensor, dim_ptr, dim_size, keepdim, dtype_opt])
 
         fn.set_output(sum)
-        fn.finalize()
         return fn.into_jit()([self.tensor])
 
 
@@ -162,12 +163,11 @@ class SpecChunk(Spec):
         chunk = fn.add_call("chunk", "chunk", [tensor, chunks, dim])
 
         values = [
-            fn.build_vector_at_tensor(chunk, fn.build_int(i))
+            fn.build_vector_index(chunk, fn.build_int(i))
             for i in range(self.chunks)
         ]
 
         fn.set_outputs(values)
-        fn.finalize()
         return fn.into_jit()([self.tensor])
 
 

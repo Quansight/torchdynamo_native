@@ -15,6 +15,7 @@ from torchgen.api.types import (
     DispatcherSignature,
     MutRefCType,
     OptionalCType,
+    VectorCType,
     boolT,
     charT,
     deviceT,
@@ -24,10 +25,12 @@ from torchgen.api.types import (
     longT,
     memoryFormatT,
     optionalIntArrayRefT,
+    scalarT,
     scalarTypeT,
     stringT,
     tensorT,
     tensorListT,
+    voidT,
 )
 from torchgen.model import BackendIndex, DispatchKey, NativeFunction
 from torchgen.utils import concatMap
@@ -109,13 +112,13 @@ class CABIArgument:
         if isinstance(type, ArrayRefCType):
             return [
                 CABIArgument(
-                    name=f"{binding.name}__size",
-                    type=BaseCType(longT),
+                    name=f"{binding.name}__ptr",
+                    type=ConstPointerCType(type.elem),
                     binding=binding
                 ),
                 CABIArgument(
-                    name=f"{binding.name}__ptr",
-                    type=ConstPointerCType(type.elem),
+                    name=f"{binding.name}__size",
+                    type=BaseCType(longT),
                     binding=binding
                 ),
             ]
@@ -162,7 +165,26 @@ class Kernel(ABC):
     def name(self) -> str: ...
 
     @abstractmethod
-    def return_type(self) -> str: ...
+    def return_type_impl(self) -> CType: ...
+
+    def return_type(self) -> Union[CType, ConstPointerCType]:
+        type = self.return_type_impl()
+
+        if isinstance(type, BaseCType) and type.type in (boolT, doubleT, longT, scalarTypeT, voidT):
+            return type
+
+        if isinstance(type, (MutRefCType, ConstRefCType)):
+            return type
+
+        if isinstance(type, BaseCType) and type.type in (tensorT, scalarT):
+            return ConstPointerCType(type)
+
+        elif type == VectorCType(BaseCType(tensorT)):
+            return ConstPointerCType(type)
+
+        else:
+            raise ValueError(f"can't infer return type: {type}")
+
 
     def c_abi_name(self) -> str:
         return f"c_abi__{self.f.func.name.unambiguous_name()}"
@@ -189,8 +211,8 @@ class DeviceKernel(Kernel):
     def name(self) -> str:
         return self.sig().name()
 
-    def return_type(self) -> str:
-        return cpp.returns_type(self.f.func.returns).cpp_type()
+    def return_type_impl(self) -> CType:
+        return cpp.returns_type(self.f.func.returns)
 
 
 @dataclass(frozen=True)
@@ -207,5 +229,5 @@ class DispatchKernel(Kernel):
     def name(self) -> str:
         return "call"
 
-    def return_type(self) -> str:
-        return dispatcher.returns_type(self.f.func.returns).cpp_type()
+    def return_type_impl(self) -> CType:
+        return dispatcher.returns_type(self.f.func.returns)

@@ -1,11 +1,12 @@
 #pragma once
 
-#include <tdnat/factories.h>
+#include <tdnat/jit_api.h>
 #include <tdnat/llvm_function_type.h>
 #include <tdnat/llvm_type.h>
 #include <tdnat/ops.h>
 
 #include <llvm/ExecutionEngine/Orc/LLJIT.h>
+#include <llvm/ExecutionEngine/Orc/ThreadSafeModule.h>
 #include <llvm/IR/IRBuilder.h>
 
 #include <ATen/core/TensorBody.h>
@@ -19,6 +20,11 @@ class JITFunction;
 
 struct Value {
   llvm::Value *val_;
+
+  llvm::Value *operator*() const
+  {
+    return val_;
+  }
 };
 
 struct FunctionData {
@@ -35,8 +41,8 @@ private:
   template <typename Return, typename... Args>
   llvm::Function *_add_function_decl(const std::string &name, Return (*fn)(Args...));
 
-  template <typename Factory>
-  llvm::Function *_add_factory_decl();
+  template <typename API>
+  llvm::Function *_add_api_decl();
 
   // For ATenOpRef, we don't have type information.
   llvm::Function *_add_aten_op_decl(ATenOpRef ref);
@@ -58,13 +64,11 @@ private:
   llvm::Type *_get_type();
 
 public:
-  Function(FunctionData data);
-  Function(Function &&fn) noexcept;
-  Function(Function &fn) = delete;
-  ~Function() = default;
-
-  Function &operator=(Function &fn) = delete;
-  Function &operator=(Function &&fn) = delete;
+  Function(
+      std::unique_ptr<llvm::Module> mod,
+      std::unique_ptr<llvm::LLVMContext> ctx,
+      FunctionData data
+  );
 
   Value set_placeholder(int i, const std::string &name);
 
@@ -78,47 +82,52 @@ public:
   );
 
   void dump();
-  void finalize();
 
   JITFunction into_jit();
 
   Value build_bool(bool b);
 
-  Value build_str(const std::string& s);
-
-  Value build_optional_tensorlist(const std::vector<Value> &v);
-
-  Value build_scalar_type(at::ScalarType type);
-
-  Value build_memory_format(at::MemoryFormat mf);
-
-  Value build_vector_at_tensor(Value val, Value position);
-
-  Value build_scalar_int(int64_t n);
-  Value build_scalar_float(double n);
+  Value build_load(Value val);
 
   template <typename T>
-  Value build_int(T n);
-  template <typename T>
-  Value build_float(T n);
+  Value build_int(T i);
+
+  template <typename Repr, typename Enum>
+  Value build_int_from_enum(Enum e);
 
   template <typename T>
-  Value build_arrayref(const std::vector<Value> &v);
+  Value build_float(T f);
+
   template <typename T>
-  Value build_arrayref_lit(const std::vector<Value> &v);
+  Value build_scalar(Value literal);
+
+  template <typename T>
+  Value build_array(const std::vector<Value> &elements);
 
   template <typename T>
   Value build_nullopt();
+
+  template <typename T, typename... Args>
+  Value build_optional(typename replace<Args, Value>::type... args);
+
   template <typename T>
-  Value build_optional(Value val);
+  Value build_list(const std::vector<Value> &elements);
+
   template <typename T>
-  Value build_optional_lit(Value val);
+  Value build_vector_index(Value vector, Value position);
+
+  static std::unique_ptr<Function> from_data(FunctionData &data)
+  {
+    auto id = std::string("Module_for_") + data.id_;
+    auto ctx = std::make_unique<llvm::LLVMContext>();
+    auto mod = std::make_unique<llvm::Module>(id, *ctx);
+    return std::make_unique<Function>(std::move(mod), std::move(ctx), data);
+  }
 
 private:
   FunctionData data_;
 
-  std::unique_ptr<llvm::LLVMContext> ctx_;
-  std::unique_ptr<llvm::Module> mod_;
+  llvm::orc::ThreadSafeModule module_;
 
   llvm::Function *fn_;
   llvm::IRBuilder<> builder_;
@@ -131,9 +140,6 @@ private:
   // Map of function names to their actual address.
   // Used for registering those functions in the JIT.
   std::unordered_map<std::string, Addr> fnaddrmap_;
-
-  // Flags whether the function is still being built.
-  bool finalized_;
 };
 
 class JITFunction

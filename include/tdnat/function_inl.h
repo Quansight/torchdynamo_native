@@ -4,144 +4,100 @@ namespace tdnat
 template <typename Return, typename... Args>
 llvm::Function *Function::_add_function_decl(const std::string &name, Return (*fn)(Args...))
 {
+  auto &mod = *module_.getModuleUnlocked();
   if (fnaddrmap_.find(name) == fnaddrmap_.end()) {
     fnaddrmap_[name] = reinterpret_cast<Addr>(fn);
     auto llvm_fn = llvm::Function::Create(
-        ABILLVMFunctionType<Return (*)(Args...)>::get(*mod_),
+        ABILLVMFunctionType<Return (*)(Args...)>::get(mod),
         llvm::GlobalValue::ExternalLinkage,
         name,
-        *mod_
+        mod
     );
     add_attributes<Return, Args...>(llvm_fn);
   }
-  return mod_->getFunction(name);
+  return mod.getFunction(name);
 }
 
-template <typename Factory>
-llvm::Function *Function::_add_factory_decl()
+template <typename API>
+llvm::Function *Function::_add_api_decl()
 {
-  return _add_function_decl(Factory::name(), &Factory::create);
-}
-
-template <typename T>
-Value Function::_build_scalar(Value val)
-{
-  auto scalar_fn = _add_factory_decl<factory::Scalar<T>>();
-
-  auto alloca = builder_.CreateAlloca(_get_type<at::Scalar>());
-  alloca->setAlignment(llvm::Align(alignof(at::Scalar)));
-
-  builder_.CreateCall(scalar_fn, {alloca, val.val_});
-  return {alloca};
-}
-
-template <typename T, typename Factory>
-Value Function::_build_optional(c10::optional<Value> val)
-{
-  constexpr bool is_memory_class = IsABIMemoryClass<c10::optional<T>>::value;
-  auto fn = _add_factory_decl<Factory>();
-
-  std::vector<llvm::Value *> args;
-
-  if (is_memory_class) {
-    auto alloca = builder_.CreateAlloca(_get_type<c10::optional<T>>());
-    args.push_back(alloca);
-  }
-
-  if (val.has_value()) {
-    args.push_back(val->val_);
-  }
-
-  auto call = builder_.CreateCall(fn, args);
-
-  if (is_memory_class) {
-    return {args[0]};
-  } else {
-    return {call};
-  }
-}
-
-template <typename T>
-Value Function::_build_arrayref(const std::vector<Value> &vals, bool from_literal)
-{
-  auto fn = _add_factory_decl<factory::ArrayRef<T>>();
-
-  auto size = build_int(vals.size()).val_;
-  auto alloca = builder_.CreateAlloca(_get_type<T>(), size);
-
-  for (size_t i = 0; i < vals.size(); i++) {
-    llvm::Value *value = vals[i].val_;
-
-    if (!from_literal) {
-      value = builder_.CreateLoad(value);
-    }
-
-    auto gep = builder_.CreateGEP(alloca, builder_.getInt64(i));
-    builder_.CreateStore(value, gep);
-  }
-
-  return {builder_.CreateCall(fn, {alloca, size})};
+  return _add_function_decl(API::name(), &API::run);
 }
 
 template <typename T>
 llvm::Type *Function::_get_type()
 {
-  return LLVMType<T>::get(*mod_);
+  return LLVMType<T>::get(*module_.getModuleUnlocked());
 }
 
 template <typename T>
-Value Function::build_int(T n)
+Value Function::build_int(T i)
 {
   static_assert(std::is_integral<T>::value);
-  _check_finalized();
-  return {builder_.getIntN(sizeof(T) * 8, n)};
+  return {builder_.getIntN(sizeof(T) * 8, i)};
+}
+
+template <typename Repr, typename Enum>
+Value Function::build_int_from_enum(Enum e)
+{
+  return {build_int(static_cast<Repr>(e))};
 }
 
 template <typename T>
-Value Function::build_float(T n)
+Value Function::build_float(T f)
 {
   static_assert(std::is_floating_point<T>::value);
-  _check_finalized();
-  return {llvm::ConstantFP::get(*ctx_, llvm::APFloat(n))};
+  return {llvm::ConstantFP::get(fn_->getContext(), llvm::APFloat(f))};
 }
 
 template <typename T>
-Value Function::build_arrayref(const std::vector<Value> &v)
+Value Function::build_scalar(Value literal)
 {
-  _check_finalized();
-  return _build_arrayref<T>(v, /* from_literal= */ false);
+  return {builder_.CreateCall(_add_api_decl<jit::Scalar<T>>(), {*literal})};
 }
 
 template <typename T>
-Value Function::build_arrayref_lit(const std::vector<Value> &v)
+Value Function::build_array(const std::vector<Value> &elements)
 {
-  _check_finalized();
-  return _build_arrayref<T>(v, /* from_literal= */ true);
+  auto size = *build_int(elements.size());
+  auto alloca = builder_.CreateAlloca(_get_type<T>(), size);
+
+  for (size_t i = 0; i < elements.size(); i++) {
+    auto gep = builder_.CreateGEP(alloca, builder_.getInt64(i));
+    builder_.CreateStore(*elements[i], gep);
+  }
+
+  return {alloca};
 }
 
 template <typename T>
 Value Function::build_nullopt()
 {
-  _check_finalized();
-  return _build_optional<T, factory::NullOpt<T>>();
+  auto nullopt_fn = _add_api_decl<jit::NullOpt<T>>();
+  return {builder_.CreateCall(nullopt_fn, {})};
+}
+
+template <typename T, typename... Args>
+Value Function::build_optional(typename replace<Args, Value>::type... args)
+{
+  auto optional_fn = _add_api_decl<jit::Optional<T, Args...>>();
+  return {builder_.CreateCall(optional_fn, {*args...})};
 }
 
 template <typename T>
-Value Function::build_optional(Value val)
+Value Function::build_list(const std::vector<Value> &elements)
 {
-  _check_finalized();
-  return _build_optional<T, factory::Optional<T>>(val);
+  auto list_fn = _add_api_decl<jit::List<T>>();
+  auto list_ptr = build_array<T>(elements);
+  auto list_size = build_int<int64_t>(elements.size());
+  return {builder_.CreateCall(list_fn, {*list_ptr, *list_size})};
 }
 
 template <typename T>
-Value Function::build_optional_lit(Value val)
+Value Function::build_vector_index(Value vector, Value position)
 {
-  _check_finalized();
-
-  auto alloca = builder_.CreateAlloca(_get_type<T>());
-  builder_.CreateStore(val.val_, alloca);
-
-  return build_optional<T>({alloca});
+  auto at_fn = _add_api_decl<jit::VectorIndex<T>>();
+  return {builder_.CreateCall(at_fn, {*vector, *position})};
 }
 
 } // namespace tdnat

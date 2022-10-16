@@ -1,4 +1,6 @@
 try:
+    import torch
+
     from torchdynamo_native._C import (
         Function,
         Value,

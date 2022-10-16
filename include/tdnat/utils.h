@@ -114,4 +114,13 @@ struct ABIFunctionType<Return (*)(Args...), std::enable_if_t<!IsABIMemoryClass<R
   using type = Return (*)(Args...);
 };
 
+
+// Convenient struct for replacing a type for another.
+// This is useful, mainly, when expand template parameter packs.
+
+template <typename T, typename U>
+struct replace {
+  using type = U;
+};
+
 } // namespace tdnat
