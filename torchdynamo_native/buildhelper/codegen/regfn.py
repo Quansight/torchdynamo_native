@@ -1,8 +1,9 @@
 from collections import defaultdict
-from typing import Dict, List, Sequence
+from typing import Dict, List, Sequence, Tuple
 
 from torchgen.api.types import (
     BaseCType,
+    Binding,
     VectorCType,
     scalarT,
     tensorT,
@@ -15,6 +16,7 @@ from torchdynamo_native.buildhelper.codegen.kernel import (
     CABIArgument,
     ConstPointerCType,
     Kernel,
+    group_by_binding,
     is_c_array_ref_like_type,
     is_c_enum_type
 )
@@ -22,14 +24,11 @@ from torchdynamo_native.buildhelper.codegen.kernel import (
 
 def pre_processing(arguments: Sequence[CABIArgument]) -> List[str]:
     body = []
-    args_of_binding = defaultdict(list)
 
-    for a in arguments:
-        args_of_binding[a.binding].append(a)
+    def binding_name(pair: Tuple[Binding, List[CABIArgument]]) -> str:
+        return pair[0].name
 
-    sorted_binding_and_args = sorted(list(args_of_binding.items()), key=lambda pair: pair[0].name)
-
-    for binding, args in sorted_binding_and_args:
+    for binding, args in sorted(list(group_by_binding(arguments).items()), key=binding_name):
         type = binding.nctype.type
 
         if len(args) == 1 and is_c_enum_type(type):

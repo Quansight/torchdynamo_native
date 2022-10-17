@@ -1,6 +1,7 @@
 from abc import ABC, abstractmethod
+from collections import defaultdict
 from dataclasses import dataclass
-from typing import Dict, List, Type, Union
+from typing import Dict, List, Sequence, Type, Union
 
 from torchgen.api import cpp, dispatcher
 from torchgen.api.types import (
@@ -51,6 +52,15 @@ def is_c_array_ref_like_type(type: CType) -> bool:
             and type.type in (stringT, intArrayRefT, tensorListT)
         )
     )
+
+
+def group_by_binding(arguments: Sequence["CABIArgument"]) -> Dict[Binding, List["CABIArgument"]]:
+    groups = defaultdict(list)
+
+    for arg in arguments:
+        groups[arg.binding].append(arg)
+
+    return groups
 
 
 @dataclass(frozen=True)
