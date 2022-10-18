@@ -25,14 +25,21 @@ from torchgen.model import (
     Type,
 )
 
+from torchgen.api.types import Binding
+from torchgen.context import native_function_manager
+from torchgen.utils import concatMap
+
 from typing import (
     Any,
     Callable,
     Dict,
     List,
     Sequence,
+    Tuple,
     Union
 )
+
+from torchdynamo_native.buildhelper.codegen.kernel import CABIArgument, Kernel
 
 DTYPE_SET = {
     torch.float,
@@ -40,7 +47,7 @@ DTYPE_SET = {
     torch.complex64,
 }
 
-NATIVE_FUNCTIONS, _ = nat.utils.parse_native_functions_yaml()
+NATIVE_FUNCTIONS, BACKEND_INDICES = nat.utils.parse_native_functions_yaml()
 NATIVE_FUNCTIONS_MAP: Dict[str, NativeFunction] = {str(f.func.name): f for f in NATIVE_FUNCTIONS}
 
 SKIP_LIST = [
@@ -78,109 +85,106 @@ def pick_dtype_for(op: OpInfo, device) -> torch.dtype:
     raise ValueError("couldn't find dtype")
 
 
-def count_number_of_tensors(thing: Any) -> int:
+def get_tensors_in(thing: Any) -> List[torch.Tensor]:
     if isinstance(thing, torch.Tensor):
-        return 1
+        return [thing]
     if isinstance(thing, (list, tuple)) and not isinstance(thing, str):
-        return sum(count_number_of_tensors(t) for t in thing)
+        return list(concatMap(get_tensors_in, thing))
     if isinstance(thing, dict):
-        return sum(count_number_of_tensors(v) for v in thing.values())
-    return 0
+        return list(concatMap(get_tensors_in, thing.values()))
+    return []
 
 
-def at_least_one_tensor(value: Any, ty: Type) -> bool:
-    if ty == BaseType(BaseTy.Tensor):
-        return isinstance(value, torch.Tensor)
-    if ty == OptionalType(BaseType(BaseTy.Tensor)):
-        return value is not None and isinstance(value, torch.Tensor)
-
-    assert isinstance(ty, ListType)
-    return any(at_least_one_tensor(v, ty.elem) for v in value)
+def at_least_one_tensor(value: Any) -> bool:
+    return len(get_tensors_in(value)) > 0
 
 
-def get_inputargs(aligned_arguments: Sequence[nat.AlignedArg]) -> Dict[int, nat.AlignedArg]:
-    return {
-        i: arg
-        for i, arg in enumerate(aligned_arguments)
-        if arg.param.type.is_tensor_like() and at_least_one_tensor(arg.value, arg.param.type)
-    }
+def get_input_tensors(arguments: Sequence[nat.AlignedArg]) -> List[torch.Tensor]:
+    return list(concatMap(lambda arg: get_tensors_in(arg.value), arguments))
 
 
-def into_value(type: Type, name: str, value: Any, index: int, fn: nat.Function) -> nat.Value:
+def create_value_for(index: int, value: Any, name: str, type: Type, fn: nat.Function) -> nat.Value:
     if type == BaseType(BaseTy.Tensor):
         return fn.set_placeholder(index, name)
 
     elif type == OptionalType(BaseType(BaseTy.Tensor)):
         if value is None:
             return fn.build_nullopt_tensor()
-        return fn.build_optional_tensor(fn.set_placeholder(index, name))
+        else:
+            return fn.build_optional_from_ref_tensor(fn.set_placeholder(index, name))
 
     raise ValueError(f"expected Tensor or Optional[Tensor] type: got {type}")
 
 
-def alignedargs_into_values(
-        aligned_arguments: Sequence[nat.AlignedArg],
-        input_args: Dict[int, nat.AlignedArg],
+def replace_value_for_inputs(
+        arguments: Sequence[nat.AlignedArg],
         fn: nat.Function
-) -> List[nat.Value]:
-    placeholder_idx = 0
-    arg_values = []
+) -> List[nat.AlignedArg]:
+    placeholder_index = 0
 
-    for i, arg in enumerate(aligned_arguments):
-        param = arg.param
+    def replace_for_argument(arg: nat.AlignedArg) -> nat.AlignedArg:
+        nonlocal placeholder_index
 
-        if i in input_args:
-            if isinstance(param.type, ListType):
-                list_values = []
+        new_value: Union[nat.Value, List[nat.Value]]
+        type = arg.param.type
 
-                for i, tensor in enumerate(arg.value):
-                    list_values.append(into_value(
-                        type=param.type.elem,
-                        name=f"{param.name}_{i}",
-                        value=tensor,
-                        index=placeholder_idx,
-                        fn=fn
-                    ))
-                    placeholder_idx += int(tensor is not None)
+        if isinstance(type, ListType):
+            assert isinstance(arg.value, (list, tuple))
 
-                if param.type.elem == BaseType(BaseTy.Tensor):
-                    arg_values.append(fn.build_arrayref_tensor(list_values))
-                elif param.type.elem == OptionalType(BaseType(BaseTy.Tensor)):
-                    arg_values.append(fn.build_optional_tensorlist(list_values))
-                else:
-                    raise ValueError(f"invalid input list type: {param.type}")
-
-            else:
-                arg_values.append(into_value(
-                    type=param.type,
-                    name=param.name,
+            new_value = []
+            for tensor in arg.value:
+                new_value.append(create_value_for(
+                    index=placeholder_index,
                     value=arg.value,
-                    index=placeholder_idx,
+                    name=arg.param.name,
+                    type=type.elem,
                     fn=fn
                 ))
-                placeholder_idx += 1
+                placeholder_index += int(tensor is not None)
+
         else:
-            arg = aligned_arguments[i]
-            py = arg.value \
-                if not arg.default \
-                else nat.str_to_py(arg.value, param.type)
-            arg_values.append(nat.py_to_value(py, param.type, fn))
+            new_value = create_value_for(placeholder_index, arg.value, arg.param.name, type, fn)
+            placeholder_index += 1
 
-    return arg_values
-
-
-def get_input_tensors(input_args: Dict[int, nat.AlignedArg]) -> List[torch.Tensor]:
-    def expand_arg(arg: nat.AlignedArg) -> List[torch.Tensor]:
-        if isinstance(arg.param.type, ListType):
-            return [tensor for tensor in arg.value]
-        else:
-            return [arg.value]
+        return arg.with_value(new_value)
 
     return [
-        tensor
-        for i in sorted(input_args.keys())
-        for tensor in expand_arg(input_args[i])
+        replace_for_argument(arg) if at_least_one_tensor(arg.value) else arg
+        for arg in arguments
     ]
+
+
+def get_bindings_and_arguments(
+        arguments: Sequence[nat.AlignedArg],
+        bindings: Sequence[Binding]
+) -> List[Tuple[Binding, nat.AlignedArg]]:
+    bindings_and_arguments = {}
+    binding_for = {b.name: (i, b) for i, b in enumerate(bindings)}
+
+    for arg in arguments:
+        name = arg.param.name
+        if name in binding_for:
+            bindings_and_arguments[binding_for[name]] = arg
+        else:
+            raise ValueError(f"can't lower {name}: {arg.param}")
+
+    return [(b, arg) for ((_, b), arg) in sorted(bindings_and_arguments.items())]
+
+
+def gen_values(
+        bindings_and_arguments: List[Tuple[Binding, nat.AlignedArg]],
+        fn: nat.Function
+) -> List[nat.Value]:
+
+    def binding_to_values(pair: Tuple[Binding, nat.AlignedArg]) -> List[nat.Value]:
+        binding, arg = pair
+        py = nat.str_to_py(arg.value, arg.param.type) if arg.default else arg.value
+        return [
+            nat.py_to_value(py, c_abi.type, fn)
+            for c_abi in CABIArgument.from_binding(binding)
+        ]
+
+    return list(concatMap(binding_to_values, bindings_and_arguments))
 
 
 def build_function_for_native(
@@ -190,20 +194,23 @@ def build_function_for_native(
         id: str,
         out_tensors: int
 ) -> Callable[[], List[torch.Tensor]]:
-    aligned_args = nat.align_and_flat_arguments(
+    arguments = nat.align_arguments(
         parameters=f.func.arguments.flat_all,
         args=[sample.input, *sample.args],
         kwargs=sample.kwargs
     )
-    input_args = get_inputargs(aligned_args)
-    input_tensors = get_input_tensors(input_args)
 
+    input_tensors = get_input_tensors(arguments)
     fn = nat.Function(id, len(input_tensors), out_tensors)
-    value_args = alignedargs_into_values(aligned_args, input_args, fn)
 
-    result = fn.add_call("result", op_name, value_args)
+    arguments = replace_value_for_inputs(arguments, fn)
+    bindings_and_arguments = get_bindings_and_arguments(
+        arguments=arguments,
+        bindings=Kernel.from_function_and_indices(f, BACKEND_INDICES).sig().arguments()
+    )
+
+    result = fn.add_call("result", op_name, gen_values(bindings_and_arguments, fn))
     fn.set_output(result)
-    fn.finalize()
 
     jitfn = fn.into_jit()
 
@@ -253,52 +260,53 @@ class TestOps(unittest.TestCase):
 
             nativef = NATIVE_FUNCTIONS_MAP[op_overloaded_name]
 
-            if nativef.func.kind() == SchemaKind.inplace:
-                raise unittest.SkipTest("inplace functions not supported")
+            with native_function_manager(nativef):
+                if nativef.func.kind() == SchemaKind.inplace:
+                    raise unittest.SkipTest("inplace functions not supported")
 
-            if not nat.operation_in_registry(op_overloaded_name):
-                continue
+                if not nat.operation_in_registry(op_overloaded_name):
+                    continue
 
-            try:
-                expected: Union[torch.Tensor, List[torch.Tensor]] = op(
-                    sample.input,
-                    *sample.args,
-                    **sample.kwargs
-                )
-            except Exception:
-                raise unittest.SkipTest("eager function failed")
+                try:
+                    expected: Union[torch.Tensor, List[torch.Tensor]] = op(
+                        sample.input,
+                        *sample.args,
+                        **sample.kwargs
+                    )
+                except Exception:
+                    raise unittest.SkipTest("eager function failed")
 
-            # Assuming every tensor is given as a parameter.
-            if isinstance(expected, torch.Tensor):
-                out_tensors = 1
-            elif isinstance(expected, (list, tuple)):
-                raise unittest.SkipTest("function with multiple return values not supported")
-                # out_tensors = len(expected)
-            else:
-                raise unittest.SkipTest(f"unexpected output type: {type(expected)}")
+                # Assuming every tensor is given as a parameter.
+                if isinstance(expected, torch.Tensor):
+                    out_tensors = 1
+                elif isinstance(expected, (list, tuple)):
+                    raise unittest.SkipTest("function with multiple return values not supported")
+                    # out_tensors = len(expected)
+                else:
+                    raise unittest.SkipTest(f"unexpected output type: {type(expected)}")
 
-            function_id = f"function_{nativef.func.name.unambiguous_name()}"
-            result = build_function_for_native(
-                f=nativef,
-                op_name=op_overloaded_name,
-                sample=sample,
-                id=function_id,
-                out_tensors=out_tensors
-            )()
+                function_id = f"function_{nativef.func.name.unambiguous_name()}"
+                result = build_function_for_native(
+                    f=nativef,
+                    op_name=op_overloaded_name,
+                    sample=sample,
+                    id=function_id,
+                    out_tensors=out_tensors
+                )()
 
-            if not isinstance(expected, list):
-                expected = [expected]
+                if not isinstance(expected, list):
+                    expected = [expected]
 
-            self.assertEqual(len(expected), len(result))
-            for exp, res in zip(expected, result):
-                if not equals(exp, res, dtype):
-                    print(f"Function: {nativef.func}")
-                    print(f"Input: {sample.input}")
-                    print(f"Args: {sample.args}")
-                    print(f"KWargs: {sample.kwargs}")
-                    print(f"Expected: {exp}")
-                    print(f"Result: {res}")
-                self.assertTrue(equals(exp, res, dtype))
+                self.assertEqual(len(expected), len(result))
+                for exp, res in zip(expected, result):
+                    if not equals(exp, res, dtype):
+                        print(f"Function: {nativef.func}")
+                        print(f"Input: {sample.input}")
+                        print(f"Args: {sample.args}")
+                        print(f"KWargs: {sample.kwargs}")
+                        print(f"Expected: {exp}")
+                        print(f"Result: {res}")
+                    self.assertTrue(equals(exp, res, dtype))
 
 
 instantiate_device_type_tests(TestOps, globals())

@@ -38,6 +38,7 @@ from torchgen.utils import concatMap
 
 Signature = Union[CppSignature, DispatcherSignature]
 CharT = BaseCppType("", "char")
+CTypeWithPointer = Union[CType, "ConstPointerCType"]
 
 
 def is_c_enum_type(type: CType) -> bool:
@@ -78,7 +79,7 @@ class ConstPointerCType:
 @dataclass(frozen=True)
 class CABIArgument:
     name: str
-    type: Union[CType, ConstPointerCType]
+    type: CTypeWithPointer
     binding: Binding
 
     @staticmethod
@@ -177,7 +178,7 @@ class Kernel(ABC):
     @abstractmethod
     def return_type_impl(self) -> CType: ...
 
-    def return_type(self) -> Union[CType, ConstPointerCType]:
+    def return_type(self) -> CTypeWithPointer:
         type = self.return_type_impl()
 
         if isinstance(type, BaseCType) and type.type in (boolT, doubleT, longT, scalarTypeT, voidT):

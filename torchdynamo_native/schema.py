@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any, Dict, List, Optional, Sequence
 
 from torchgen.model import Argument, FunctionSchema
@@ -13,6 +13,8 @@ class AlignedArg:
     value: Any
     default: bool = False
 
+    def with_value(self, value: Any) -> "AlignedArg":
+        return replace(self, value=value)
 
 
 def align_arguments(
