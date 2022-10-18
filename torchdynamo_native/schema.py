@@ -14,7 +14,8 @@ class AlignedArg:
     default: bool = False
 
 
-def align_and_flat_arguments(
+
+def align_arguments(
         parameters: Sequence[Argument],
         args: Sequence[Any],
         kwargs: Dict[str, Any]
@@ -67,7 +68,7 @@ def matches_function_schema(
 
     try:
         # Check whether we have enough arguments.
-        aligned_arguments = align_and_flat_arguments(parameters, args, kwargs)
+        aligned_arguments = align_arguments(parameters, args, kwargs)
     except ValueError:
         return False
 

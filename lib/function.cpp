@@ -141,6 +141,11 @@ Value Function::build_load(Value val)
   return {builder_.CreateLoad(*val)};
 }
 
+Value Function::build_str(const std::string &s)
+{
+  return {builder_.CreateGlobalStringPtr(s)};
+}
+
 void Function::dump()
 {
   module_.getModuleUnlocked()->print(llvm::outs(), nullptr);

@@ -89,6 +89,8 @@ public:
 
   Value build_load(Value val);
 
+  Value build_str(const std::string& s);
+
   template <typename T>
   Value build_int(T i);
 
@@ -109,6 +111,12 @@ public:
 
   template <typename T, typename... Args>
   Value build_optional(typename replace<Args, Value>::type... args);
+
+  template <typename T>
+  Value build_nullopt_optionalarrayref();
+
+  template <typename T>
+  Value build_optionalarrayref(const std::vector<Value> &elements);
 
   template <typename T>
   Value build_list(const std::vector<Value> &elements);

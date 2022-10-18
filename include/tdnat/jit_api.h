@@ -8,6 +8,7 @@
 #include <c10/core/Scalar.h>
 #include <c10/util/ArrayRef.h>
 #include <c10/util/Optional.h>
+#include <c10/util/OptionalArrayRef.h>
 
 namespace tdnat
 {
@@ -67,6 +68,32 @@ struct NullOpt {
   static c10::optional<T> *run()
   {
     return new c10::optional<T>(c10::nullopt);
+  }
+};
+
+template <typename T>
+struct OptionalArrayRef {
+  static std::string name()
+  {
+    return "OptionalArrayRef<" + LLVMType<T>::name() + ">";
+  }
+
+  static c10::OptionalArrayRef<T> *run(const T *ptr, int64_t size)
+  {
+    return new c10::OptionalArrayRef<T>({ptr, size});
+  }
+};
+
+template <typename T>
+struct NullOptOptionalArrayRef {
+  static std::string name()
+  {
+    return "NullOptOptionalArrayRef<" + LLVMType<T>::name() + ">";
+  }
+
+  static c10::OptionalArrayRef<T> *run()
+  {
+    return new c10::OptionalArrayRef<T>(c10::nullopt);
   }
 };
 

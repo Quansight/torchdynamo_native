@@ -14,7 +14,7 @@ try:
 
     from torchdynamo_native.schema import (
         AlignedArg,
-        align_and_flat_arguments,
+        align_arguments,
         find_operator_name,
     )
 except Exception:

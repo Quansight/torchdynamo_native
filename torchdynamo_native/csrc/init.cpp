@@ -127,6 +127,7 @@ PYBIND11_MODULE(_C, m)
       // Build: scalar types.
       .def("build_int", &Function::build_int<int64_t>)
       .def("build_float", &Function::build_float<double>)
+      .def("build_str", &Function::build_str)
 
       // Build: enumerator types.
       .def("build_int_from_scalar_type", &Function::build_int_from_enum<int8_t, at::ScalarType>)
@@ -160,10 +161,16 @@ PYBIND11_MODULE(_C, m)
       .def("build_optional_float", &Function::build_optional<double, double>)
       .def("build_optional_scalar_type", &Function::build_optional<at::ScalarType, int8_t>)
       .def("build_optional_memory_format", &Function::build_optional<at::MemoryFormat, int8_t>)
-      .def("build_optional_tensor", &Function::build_optional<at::Tensor, const at::Tensor &>)
       .def("build_optional_arrayref_int", &Function::build_optional<at::IntArrayRef, int64_t *, int64_t>)
-      .def("build_optional_scalar", &Function::build_optional<at::Scalar, const at::Scalar &>)
+      .def("build_optional_scalar_int", &Function::build_optional<at::Scalar, int64_t>)
+      .def("build_optional_scalar_float", &Function::build_optional<at::Scalar, double>)
       .def("build_optional_str", &Function::build_optional<c10::string_view, const char *, int64_t>)
+
+      .def("build_optional_from_ref_tensor", &Function::build_optional<at::Tensor, const at::Tensor &>)
+
+      // Build: c10::OptionalArrayRef<T>.
+      .def("build_nullopt_optionalarrayref_int", &Function::build_nullopt_optionalarrayref<int64_t>)
+      .def("build_optionalarrayref_int", &Function::build_optionalarrayref<int64_t>)
 
       // Build: vector index.
       .def("build_vector_index", &Function::build_vector_index<at::Tensor>)

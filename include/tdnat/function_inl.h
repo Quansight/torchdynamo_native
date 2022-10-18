@@ -85,6 +85,22 @@ Value Function::build_optional(typename replace<Args, Value>::type... args)
 }
 
 template <typename T>
+Value Function::build_nullopt_optionalarrayref()
+{
+  auto nullopt_fn = _add_api_decl<jit::NullOptOptionalArrayRef<T>>();
+  return {builder_.CreateCall(nullopt_fn, {})};
+}
+
+template <typename T>
+Value Function::build_optionalarrayref(const std::vector<Value> &elements)
+{
+  auto optionalarrayref_fn = _add_api_decl<jit::OptionalArrayRef<T>>();
+  auto size = build_int<int64_t>(elements.size());
+  auto ptr = build_array<T>(elements);
+  return {builder_.CreateCall(optionalarrayref_fn, {*ptr, *size})};
+}
+
+template <typename T>
 Value Function::build_list(const std::vector<Value> &elements)
 {
   auto list_fn = _add_api_decl<jit::List<T>>();
