@@ -157,6 +157,7 @@ PYBIND11_MODULE(_C, m)
       .def("build_nullopt_tensor", &Function::build_nullopt<at::Tensor>)
 
       // Build: c10::optional<T>.
+      .def("build_optional_bool", &Function::build_optional<bool, bool>)
       .def("build_optional_int", &Function::build_optional<int64_t, int64_t>)
       .def("build_optional_float", &Function::build_optional<double, double>)
       .def("build_optional_scalar_type", &Function::build_optional<at::ScalarType, int8_t>)

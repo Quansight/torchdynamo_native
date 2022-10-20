@@ -23,6 +23,7 @@ from torchgen.api.types import (
     BaseCType,
     BaseCppType,
     ConstRefCType,
+    ListCType,
     MutRefCType,
     OptionalCType,
     boolT,
@@ -68,7 +69,10 @@ def str_to_py(thing: str, ty: Type) -> Any:
             pass
 
     elif ty == BaseType(BaseTy.str):
-        return thing
+        if thing[0] == thing[-1] == "'":
+            return thing[1:-1]
+        else:
+            return thing
 
     elif ty == BaseType(BaseTy.bool):
         if thing == "True":
@@ -179,6 +183,7 @@ def get_value_for_optional(
 
     elif isinstance(ctype, BaseCType):
         cpp_type_table: Dict[BaseCppType, Tuple[type, Callable[[Value], Value]]] = {
+            boolT:         (bool,                fn.build_optional_bool),
             longT:         (int,                 fn.build_optional_int),
             doubleT:       (float,               fn.build_optional_float),
             memoryFormatT: (torch.memory_format, fn.build_optional_memory_format),
@@ -240,6 +245,9 @@ def py_to_value(thing: Any, ctype: CTypeWithPointer, fn: Function) -> Value:
             return fn.build_nullopt_optionalarrayref_int()
         else:
             return fn.build_optionalarrayref_int([fn.build_int(x) for x in thing])
+
+    elif ctype == ListCType(OptionalCType(BaseCType(tensorT))):
+        return fn.build_list_optional_tensor([fn.build_load(x) for x in thing])
 
     elif isinstance(ctype, ConstPointerCType):
         if isinstance(thing, str):
