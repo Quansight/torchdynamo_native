@@ -33,6 +33,10 @@ class OverloadInfo:
         return self.arguments - self.default_arguments
 
 
+def native_function_key(f: NativeFunction) -> str:
+    return str(f.func.name.name)
+
+
 def parse_native_functions_yaml() -> ParsedYaml:
     # Torchgen base file.
     torchgen_init = torchgen.__file__
@@ -53,7 +57,7 @@ def group_native_functions_overloads(
 ) -> Dict[str, List[OverloadInfo]]:
     map_by_name = defaultdict(list)
     for f in native_functions:
-        map_by_name[f.root_name].append(OverloadInfo(f))
+        map_by_name[native_function_key(f)].append(OverloadInfo(f))
     return map_by_name
 
 
