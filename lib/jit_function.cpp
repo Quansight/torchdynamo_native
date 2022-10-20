@@ -12,14 +12,17 @@ JITFunction::JITFunction(llvm::orc::LLJIT *jit, FunctionData data) :
 {
 }
 
-std::vector<at::Tensor> JITFunction::run(at::ArrayRef<at::Tensor> in_tensors)
+std::vector<at::Tensor *> JITFunction::run(at::ArrayRef<at::Tensor> in_tensors)
 {
-  std::vector<at::Tensor> out_tensors(data_.out_tensors_);
+  std::vector<at::Tensor *> out_tensors(data_.out_tensors_);
   run_out(in_tensors, out_tensors);
   return out_tensors;
 }
 
-void JITFunction::run_out(at::ArrayRef<at::Tensor> in_tensors, at::ArrayRef<at::Tensor> out_tensors)
+void JITFunction::run_out(
+    at::ArrayRef<at::Tensor> in_tensors,
+    at::ArrayRef<at::Tensor *> out_tensors
+)
 {
 
   TORCH_CHECK(
