@@ -23,6 +23,7 @@ from torchgen.api.types import (
     BaseCType,
     BaseCppType,
     ConstRefCType,
+    ListCType,
     MutRefCType,
     OptionalCType,
     boolT,
@@ -68,7 +69,10 @@ def str_to_py(thing: str, ty: Type) -> Any:
             pass
 
     elif ty == BaseType(BaseTy.str):
-        return thing
+        if thing[0] == thing[-1] == "'":
+            return thing[1:-1]
+        else:
+            return thing
 
     elif ty == BaseType(BaseTy.bool):
         if thing == "True":
@@ -111,12 +115,17 @@ def get_values_for_array(
 ) -> Tuple[Value, Value]:
     assert isinstance(ctype, BaseCType), f"can only build nullopt for BaseCType. Got: {ctype}"
 
-    def build_array_tensor_from_ref(array: List[Value]) -> Value:
-        return fn.build_array_tensor([fn.build_load(x) for x in array])
+    def build_array_from_ref_fn(
+            build_fn: Callable[[List[Value]], Value]
+    ) -> Callable[[List[Value]], Value]:
+        def inner(array: List[Value]) -> Value:
+            return build_fn([fn.build_load(x) for x in array])
+        return inner
 
     cpp_type_table: Dict[BaseCppType, Tuple[type, Callable[[List[Value]], Value]]] = {
-        longT:   (int,   fn.build_array_int),
-        tensorT: (Value, build_array_tensor_from_ref),
+        longT:   (int,    fn.build_array_int),
+        scalarT: (object, build_array_from_ref_fn(fn.build_array_scalar)),
+        tensorT: (Value,  build_array_from_ref_fn(fn.build_array_tensor)),
     }
 
     if ctype.type in cpp_type_table:
@@ -149,6 +158,7 @@ def get_value_for_nullopt(ctype: CTypeWithPointer, fn: Function) -> Value:
         memoryFormatT: fn.build_nullopt_memory_format,
         deviceT:       fn.build_nullopt_device,
         layoutT:       fn.build_nullopt_layout,
+        scalarT:       fn.build_nullopt_scalar,
     }
 
     if ctype.type in cpp_type_table:
@@ -179,6 +189,7 @@ def get_value_for_optional(
 
     elif isinstance(ctype, BaseCType):
         cpp_type_table: Dict[BaseCppType, Tuple[type, Callable[[Value], Value]]] = {
+            boolT:         (bool,                fn.build_optional_bool),
             longT:         (int,                 fn.build_optional_int),
             doubleT:       (float,               fn.build_optional_float),
             memoryFormatT: (torch.memory_format, fn.build_optional_memory_format),
@@ -240,6 +251,9 @@ def py_to_value(thing: Any, ctype: CTypeWithPointer, fn: Function) -> Value:
             return fn.build_nullopt_optionalarrayref_int()
         else:
             return fn.build_optionalarrayref_int([fn.build_int(x) for x in thing])
+
+    elif ctype == ListCType(OptionalCType(BaseCType(tensorT))):
+        return fn.build_list_optional_tensor([fn.build_load(x) for x in thing])
 
     elif isinstance(ctype, ConstPointerCType):
         if isinstance(thing, str):

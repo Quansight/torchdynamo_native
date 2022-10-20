@@ -21,11 +21,15 @@ from torchgen.model import (
     NativeFunction,
     OptionalType,
     ListType,
-    SchemaKind,
     Type,
 )
 
-from torchgen.api.types import Binding
+from torchgen.api.types import (
+    BaseCType,
+    Binding,
+    VectorCType,
+    tensorT,
+)
 from torchgen.context import native_function_manager
 from torchgen.utils import concatMap
 
@@ -39,7 +43,8 @@ from typing import (
     Union
 )
 
-from torchdynamo_native.buildhelper.codegen.kernel import CABIArgument, Kernel
+from torchdynamo_native.buildhelper.codegen.kernel import CABIArgument, ConstPointerCType, Kernel
+from torchdynamo_native.utils import native_function_overloaded_name
 
 DTYPE_SET = {
     torch.float,
@@ -52,6 +57,8 @@ NATIVE_FUNCTIONS_MAP: Dict[str, NativeFunction] = {str(f.func.name): f for f in 
 
 SKIP_LIST = [
     ("tensordot", "needs pre-processing before native kernel"),
+    ("stft", "needs pre-processing before native kernel"),
+
     ("corrcoef", "non-deterministic behavior"),
     ("cov", "non-deterministic behavior"),
     ("where", "input is not the first argument"),
@@ -68,13 +75,6 @@ SKIP_LIST = [
     ("empty_like", "non-deterministic operator"),
     ("new_empty", "non-deterministic operator"),
     ("bernoulli", "non-deterministic operator"),
-
-    ("as_strided_scatter", "segfault"),
-    ("searchsorted", "segfault"),
-    ("istft", "segfault"),
-    ("stft", "segfault"),
-    ("nanquantile", "segfault"),
-    ("quantile", "segfault"),
 ]
 
 
@@ -194,6 +194,8 @@ def build_function_for_native(
         id: str,
         out_tensors: int
 ) -> Callable[[], List[torch.Tensor]]:
+    kernel = Kernel.from_function_and_indices(f, BACKEND_INDICES)
+
     arguments = nat.align_arguments(
         parameters=f.func.arguments.flat_all,
         args=[sample.input, *sample.args],
@@ -206,12 +208,20 @@ def build_function_for_native(
     arguments = replace_value_for_inputs(arguments, fn)
     bindings_and_arguments = get_bindings_and_arguments(
         arguments=arguments,
-        bindings=Kernel.from_function_and_indices(f, BACKEND_INDICES).sig().arguments()
+        bindings=kernel.sig().arguments()
     )
 
     result = fn.add_call("result", op_name, gen_values(bindings_and_arguments, fn))
-    fn.set_output_from_ref(result)
 
+    if kernel.return_type() == ConstPointerCType(VectorCType(BaseCType(tensorT))):
+        fn.set_output_from_refs([
+            fn.build_vector_index(result, fn.build_int(i))
+            for i in range(out_tensors)
+        ])
+    else:
+        fn.set_output_from_ref(result)
+
+    fn.dump()
     jitfn = fn.into_jit()
 
     def run() -> List[torch.Tensor]:
@@ -245,30 +255,27 @@ class TestOps(unittest.TestCase):
 
         for sample in samples:
             try:
-                op_overloaded_name = nat.find_operator_name(
+                native_function = nat.find_native_function(
                     op_name=op.name,
                     args=[sample.input, *sample.args],
                     kwargs=sample.kwargs
                 )
-                self.assertIsNotNone(op_overloaded_name)
+                self.assertIsNotNone(native_function)
             except Exception:
                 # If there it is not a NativeFunction, bail.
                 continue
 
             # Satisfying the typing hints.
-            assert op_overloaded_name is not None
+            assert native_function is not None
 
-            nativef = NATIVE_FUNCTIONS_MAP[op_overloaded_name]
-
-            with native_function_manager(nativef):
-                if nativef.func.kind() == SchemaKind.inplace:
-                    raise unittest.SkipTest("inplace functions not supported")
+            with native_function_manager(native_function):
+                op_overloaded_name = native_function_overloaded_name(native_function)
 
                 if not nat.operation_in_registry(op_overloaded_name):
                     continue
 
                 try:
-                    expected: Union[torch.Tensor, List[torch.Tensor]] = op(
+                    raw = op(
                         sample.input,
                         *sample.args,
                         **sample.kwargs
@@ -276,36 +283,25 @@ class TestOps(unittest.TestCase):
                 except Exception:
                     raise unittest.SkipTest("eager function failed")
 
-                # Assuming every tensor is given as a parameter.
-                if isinstance(expected, torch.Tensor):
-                    out_tensors = 1
-                elif isinstance(expected, (list, tuple)):
-                    raise unittest.SkipTest("function with multiple return values not supported")
-                    # out_tensors = len(expected)
-                else:
-                    raise unittest.SkipTest(f"unexpected output type: {type(expected)}")
+                expected = [raw] if not isinstance(raw, (tuple, list)) else raw
 
-                function_id = f"function_{nativef.func.name.unambiguous_name()}"
+                if len(expected) < 1:
+                    raise unittest.SkipTest("function should return something")
+
+                if not isinstance(expected[0], torch.Tensor):
+                    raise unittest.SkipTest(f"function doesn't return tensor: {type(expected[0])}")
+
+                function_id = f"function_{native_function.func.name.unambiguous_name()}"
                 result = build_function_for_native(
-                    f=nativef,
+                    f=native_function,
                     op_name=op_overloaded_name,
                     sample=sample,
                     id=function_id,
-                    out_tensors=out_tensors
+                    out_tensors=len(expected)
                 )()
-
-                if not isinstance(expected, list):
-                    expected = [expected]
 
                 self.assertEqual(len(expected), len(result))
                 for exp, res in zip(expected, result):
-                    if not equals(exp, res, dtype):
-                        print(f"Function: {nativef.func}")
-                        print(f"Input: {sample.input}")
-                        print(f"Args: {sample.args}")
-                        print(f"KWargs: {sample.kwargs}")
-                        print(f"Expected: {exp}")
-                        print(f"Result: {res}")
                     self.assertTrue(equals(exp, res, dtype))
 
 

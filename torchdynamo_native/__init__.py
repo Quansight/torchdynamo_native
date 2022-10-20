@@ -15,7 +15,7 @@ try:
     from torchdynamo_native.schema import (
         AlignedArg,
         align_arguments,
-        find_operator_name,
+        find_native_function,
     )
 except Exception:
     pass

@@ -37,6 +37,10 @@ def native_function_key(f: NativeFunction) -> str:
     return str(f.func.name.name)
 
 
+def native_function_overloaded_name(f: NativeFunction) -> str:
+    return str(f.func.name)
+
+
 def parse_native_functions_yaml() -> ParsedYaml:
     # Torchgen base file.
     torchgen_init = torchgen.__file__
