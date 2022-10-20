@@ -1,7 +1,7 @@
 from dataclasses import dataclass, replace
 from typing import Any, Dict, List, Optional, Sequence
 
-from torchgen.model import Argument, FunctionSchema
+from torchgen.model import Argument, FunctionSchema, NativeFunction
 
 from torchdynamo_native.convert import torch_isinstance
 from torchdynamo_native.utils import NATIVE_FUNCTIONS_OVERLOAD_MAP
@@ -96,12 +96,16 @@ def matches_function_schema(
     return True
 
 
-def find_operator_name(op_name: str, args: Sequence[Any], kwargs: Dict[str, Any]) -> Optional[str]:
+def find_native_function(
+        op_name: str,
+        args: Sequence[Any],
+        kwargs: Dict[str, Any]
+) -> Optional[NativeFunction]:
     if op_name not in NATIVE_FUNCTIONS_OVERLOAD_MAP:
         raise ValueError(f"operation not in 'native_functions.yaml': {op_name}")
 
     for ovl in NATIVE_FUNCTIONS_OVERLOAD_MAP[op_name]:
         if matches_function_schema(ovl.f.func, args, kwargs):
-            return str(ovl.f.func.name)
+            return ovl.f
 
     return None
