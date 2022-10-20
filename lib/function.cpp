@@ -45,12 +45,12 @@ Function::Function(
 
   // The function signature will be:
   //
-  //   void <function-name>(Tensor* in_tensors, Tensor* out_tensors);
+  //   void <function-name>(Tensor* in_tensors, Tensor** out_tensors);
   //
   // This allow us to create a function with a variable number of input
   // and output tensors.
   fn_ = llvm::Function::Create(
-      ABILLVMFunctionType<void (*)(at::Tensor *, at::Tensor *)>::get(module),
+      ABILLVMFunctionType<void (*)(at::Tensor *, at::Tensor **)>::get(module),
       llvm::GlobalValue::ExternalLinkage,
       data_.id_,
       module
@@ -67,26 +67,22 @@ Value Function::set_placeholder(int i, const std::string &name)
   return {symbolmap_[name]};
 }
 
-std::vector<Value> Function::set_outputs(const std::vector<Value> &outputs)
+std::vector<Value> Function::set_output_from_refs(const std::vector<Value> &outputs)
 {
-  std::vector<Value> real_outputs;
+  std::vector<Value> output_values;
 
   for (size_t i = 0; i < data_.out_tensors_; i++) {
-    auto ptr = outputs[i];
-    auto value = builder_.CreateLoad(_get_type<at::Tensor>(), *ptr);
-
     auto out_ptr = builder_.CreateGEP(fn_->getArg(1), builder_.getInt64(i));
-    builder_.CreateStore(value, out_ptr);
-
-    real_outputs.push_back({out_ptr});
+    builder_.CreateStore(*(outputs[i]), out_ptr);
+    output_values.push_back({out_ptr});
   }
 
-  return real_outputs;
+  return output_values;
 }
 
-Value Function::set_output(const Value &output)
+Value Function::set_output_from_ref(const Value &output)
 {
-  return set_outputs({output})[0];
+  return set_output_from_refs({output})[0];
 }
 
 Value Function::add_call(

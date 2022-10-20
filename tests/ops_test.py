@@ -210,7 +210,7 @@ def build_function_for_native(
     )
 
     result = fn.add_call("result", op_name, gen_values(bindings_and_arguments, fn))
-    fn.set_output(result)
+    fn.set_output_from_ref(result)
 
     jitfn = fn.into_jit()
 

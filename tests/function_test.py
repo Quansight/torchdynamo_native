@@ -30,7 +30,7 @@ class SpecAdd(Spec):
         alpha_ = fn.build_scalar_int(alpha_)
         add = fn.add_call("add", "add.Tensor", [lhs, rhs, alpha_])
 
-        fn.set_output(add)
+        fn.set_output_from_ref(add)
         return fn.into_jit()([self.lhs, self.rhs])
 
 
@@ -57,7 +57,7 @@ class SpecCat(Spec):
         tensorlist_size = fn.build_int(2)
         cat = fn.add_call("cat", "cat", [tensorlist_ptr, tensorlist_size, dim])
 
-        fn.set_output(cat)
+        fn.set_output_from_ref(cat)
         return fn.into_jit()([self.t1, self.t2])
 
 
@@ -80,13 +80,13 @@ class SpecIndex(Spec):
 
         indices = fn.build_list_optional_tensor([
             fn.build_load(fn.build_nullopt_tensor()),
-            fn.build_load(fn.build_optional_tensor(i1)),
-            fn.build_load(fn.build_optional_tensor(i2)),
+            fn.build_load(fn.build_optional_from_ref_tensor(i1)),
+            fn.build_load(fn.build_optional_from_ref_tensor(i2)),
         ])
 
         index = fn.add_call("index", "index.Tensor", [tensor, indices])
 
-        fn.set_output(index)
+        fn.set_output_from_ref(index)
         return fn.into_jit()([self.tensor, self.i0, self.i1])
 
 
@@ -110,7 +110,7 @@ class SpecArgMin(Spec):
 
         argmin = fn.add_call("argmin", "argmin", [tensor, dim_opt, keepdim])
 
-        fn.set_output(argmin)
+        fn.set_output_from_ref(argmin)
         return fn.into_jit()([self.tensor])
 
 
@@ -139,7 +139,7 @@ class SpecSum(Spec):
 
         sum = fn.add_call("sum", "sum.dim_IntList", [tensor, dim_ptr, dim_size, keepdim, dtype_opt])
 
-        fn.set_output(sum)
+        fn.set_output_from_ref(sum)
         return fn.into_jit()([self.tensor])
 
 
@@ -167,7 +167,7 @@ class SpecChunk(Spec):
             for i in range(self.chunks)
         ]
 
-        fn.set_outputs(values)
+        fn.set_output_from_refs(values)
         return fn.into_jit()([self.tensor])
 
 

@@ -35,14 +35,14 @@ TEST(FunctionTest, AddTest)
     auto alpha_ = fn->build_scalar<int64_t>(alpha_int);
     auto add = fn->add_call("add", "add.Tensor", {lhs, rhs, alpha_});
 
-    fn->set_output(add);
+    fn->set_output_from_ref(add);
   }
 
   auto jitfn = fn->into_jit();
   auto result = jitfn.run({lhs, rhs});
 
   ASSERT_EQ(result.size(), 1);
-  ASSERT_TRUE(expect.equal(result[0]));
+  ASSERT_TRUE(expect.equal(*result[0]));
 }
 
 // NOLINTNEXTLINE
@@ -67,14 +67,14 @@ TEST(FunctionTest, CatTest)
     });
     auto cat = fn->add_call("cat", "cat", {tensor_ptr, tensor_size, dim_});
 
-    fn->set_output(cat);
+    fn->set_output_from_ref(cat);
   }
 
   auto jitfn = fn->into_jit();
   auto result = jitfn.run({t1, t2});
 
   ASSERT_EQ(result.size(), 1);
-  ASSERT_TRUE(expect.equal(result[0]));
+  ASSERT_TRUE(expect.equal(*result[0]));
 }
 
 // NOLINTNEXTLINE
@@ -103,14 +103,14 @@ TEST(FunctionTest, IndexTest)
 
     auto index = fn->add_call("index", "index.Tensor", {tensor, indices});
 
-    fn->set_output(index);
+    fn->set_output_from_ref(index);
   }
 
   auto jitfn = fn->into_jit();
   auto result = jitfn.run({tensor, i0, i1});
 
   ASSERT_EQ(result.size(), 1);
-  ASSERT_TRUE(expect.equal(result[0]));
+  ASSERT_TRUE(expect.equal(*result[0]));
 }
 
 // NOLINTNEXTLINE
@@ -132,14 +132,14 @@ TEST(FunctionTest, ArgMinTest)
 
     auto argmin = fn->add_call("argmin", "argmin", {tensor, dim_opt, keepdim_});
 
-    fn->set_output(argmin);
+    fn->set_output_from_ref(argmin);
   }
 
   auto jitfn = fn->into_jit();
   auto result = jitfn.run({tensor});
 
   ASSERT_EQ(result.size(), 1);
-  ASSERT_TRUE(expect.equal(result[0]));
+  ASSERT_TRUE(expect.equal(*result[0]));
 }
 
 // NOLINTNEXTLINE
@@ -171,14 +171,14 @@ TEST(FunctionTest, SumTest)
     auto sum =
         fn->add_call("sum", "sum.dim_IntList", {tensor, dim_ptr, dim_size, keepdim, type_opt});
 
-    fn->set_output(sum);
+    fn->set_output_from_ref(sum);
   }
 
   auto jitfn = fn->into_jit();
   auto result = jitfn.run({tensor});
 
   ASSERT_EQ(result.size(), 1);
-  ASSERT_TRUE(expect.equal(result[0]));
+  ASSERT_TRUE(expect.equal(*result[0]));
 }
 
 // NOLINTNEXTLINE
@@ -205,7 +205,7 @@ TEST(FunctionTest, ChunkTest)
       values.push_back(fn->build_vector_index<at::Tensor>(chunk, fn->build_int<int64_t>(i)));
     }
 
-    fn->set_outputs(values);
+    fn->set_output_from_refs(values);
   }
 
   auto jitfn = fn->into_jit();
@@ -213,7 +213,7 @@ TEST(FunctionTest, ChunkTest)
 
   ASSERT_EQ(result.size(), chunks);
   for (size_t i = 0; i < chunks; i++) {
-    ASSERT_TRUE(expect[i].equal(result[i]));
+    ASSERT_TRUE(expect[i].equal(*result[i]));
   }
 }
 
@@ -238,13 +238,13 @@ TEST(FunctionTest, MultinomialTest)
     auto result =
         fn->add_call("multinomial", "multinomial", {tensor, samples_, replacement_, generator});
 
-    fn->set_output(result);
+    fn->set_output_from_ref(result);
   }
 
   auto jitfn = fn->into_jit();
   auto result = jitfn.run({tensor});
 
-  ASSERT_EQ(expect.sizes(), result[0].sizes());
-  ASSERT_EQ(expect.scalar_type(), result[0].scalar_type());
-  ASSERT_EQ(expect.device(), result[0].device());
+  ASSERT_EQ(expect.sizes(), result[0]->sizes());
+  ASSERT_EQ(expect.scalar_type(), result[0]->scalar_type());
+  ASSERT_EQ(expect.device(), result[0]->device());
 }

@@ -86,7 +86,7 @@ function_init(const std::string &id, size_t in_tensors, size_t out_tensors)
 }
 
 // Wrapper around nat::JITFunction::run.
-static std::vector<at::Tensor>
+static std::vector<at::Tensor*>
 jitfunction_run(JITFunction &jitfn, const std::vector<at::Tensor> &tensors)
 {
   return jitfn.run(tensors);
@@ -112,8 +112,8 @@ PYBIND11_MODULE(_C, m)
 
       // Input & Output.
       .def("set_placeholder", &Function::set_placeholder)
-      .def("set_output", &Function::set_output)
-      .def("set_outputs", &Function::set_outputs)
+      .def("set_output_from_ref", &Function::set_output_from_ref)
+      .def("set_output_from_refs", &Function::set_output_from_refs)
 
       // Operator call.
       .def("add_call", &Function::add_call)

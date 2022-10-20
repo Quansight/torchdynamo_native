@@ -72,8 +72,8 @@ public:
 
   Value set_placeholder(int i, const std::string &name);
 
-  std::vector<Value> set_outputs(const std::vector<Value> &outputs);
-  Value set_output(const Value &output);
+  std::vector<Value> set_output_from_refs(const std::vector<Value> &outputs);
+  Value set_output_from_ref(const Value &output);
 
   Value add_call(
       const std::string &symbolname,
@@ -89,7 +89,7 @@ public:
 
   Value build_load(Value val);
 
-  Value build_str(const std::string& s);
+  Value build_str(const std::string &s);
 
   template <typename T>
   Value build_int(T i);
@@ -155,15 +155,15 @@ class JITFunction
 public:
   JITFunction(llvm::orc::LLJIT *jit, FunctionData data);
 
-  std::vector<at::Tensor> run(at::ArrayRef<at::Tensor> in_tensors);
-  void run_out(at::ArrayRef<at::Tensor> in_tensors, at::ArrayRef<at::Tensor> out_tensors);
+  std::vector<at::Tensor *> run(at::ArrayRef<at::Tensor> in_tensors);
+  void run_out(at::ArrayRef<at::Tensor> in_tensors, at::ArrayRef<at::Tensor *> out_tensors);
 
 private:
   std::unique_ptr<llvm::orc::LLJIT> jit_;
 
   FunctionData data_;
 
-  using RunFnType = void (*)(const at::Tensor *, const at::Tensor *);
+  using RunFnType = void (*)(const at::Tensor *, at::Tensor *const *);
   RunFnType cache_ = nullptr;
 };
 
