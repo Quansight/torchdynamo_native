@@ -49,7 +49,7 @@ from torchdynamo_native.utils import native_function_overloaded_name
 DTYPE_SET = {
     torch.float,
     torch.long,
-    torch.complex64,
+    torch.complex128,
 }
 
 NATIVE_FUNCTIONS, BACKEND_INDICES = nat.utils.parse_native_functions_yaml()
@@ -62,19 +62,21 @@ SKIP_LIST = [
     ("corrcoef", "non-deterministic behavior"),
     ("cov", "non-deterministic behavior"),
     ("where", "input is not the first argument"),
+]
 
-    ("multinomial", "non-deterministic operator"),
-    ("randn", "non-deterministic operator"),
-    ("randn_like", "non-deterministic operator"),
-    ("randint", "non-deterministic operator"),
-    ("randint_like", "non-deterministic operator"),
-    ("rand", "non-deterministic operator"),
-    ("rand_like", "non-deterministic operator"),
-    ("normal", "non-deterministic operator"),
-    ("empty", "non-deterministic operator"),
-    ("empty_like", "non-deterministic operator"),
-    ("new_empty", "non-deterministic operator"),
-    ("bernoulli", "non-deterministic operator"),
+NONDETERMINISTIC_LIST = [
+    "multinomial",
+    "randn",
+    "randn_like",
+    "randint",
+    "randint_like",
+    "rand",
+    "rand_like",
+    "normal",
+    "empty",
+    "empty_like",
+    "new_empty",
+    "bernoulli",
 ]
 
 
@@ -82,7 +84,7 @@ def pick_dtype_for(op: OpInfo, device) -> torch.dtype:
     for dtype in DTYPE_SET:
         if op.supports_dtype(dtype, device):
             return dtype
-    raise ValueError("couldn't find dtype")
+    raise ValueError(f"couldn't find dtype. Available: {op.supported_dtypes(device)}")
 
 
 def get_tensors_in(thing: Any) -> List[torch.Tensor]:
@@ -221,7 +223,6 @@ def build_function_for_native(
     else:
         fn.set_output_from_ref(result)
 
-    fn.dump()
     jitfn = fn.into_jit()
 
     def run() -> List[torch.Tensor]:
@@ -236,7 +237,61 @@ def equals(lhs: torch.Tensor, rhs: torch.Tensor, dtype: torch.dtype) -> bool:
     return bool(torch.isclose(lhs.to_dense(), rhs.to_dense(), equal_nan=True).all())
 
 
+def similar(lhs: torch.Tensor, rhs: torch.Tensor, dtype: torch.dtype) -> bool:
+    if lhs.dtype != rhs.dtype:
+        return False
+    if lhs.shape != rhs.shape:
+        return False
+    return True
+
+
 class TestOps(unittest.TestCase):
+    def _test_native_function(
+            self,
+            f: NativeFunction,
+            op: OpInfo,
+            sample: SampleInput,
+            dtype: torch.dtype
+    ):
+        with native_function_manager(f):
+            op_overloaded_name = native_function_overloaded_name(f)
+
+            if not nat.operation_in_registry(op_overloaded_name):
+                return
+
+            try:
+                raw = op(
+                    sample.input,
+                    *sample.args,
+                    **sample.kwargs
+                )
+            except Exception:
+                raise unittest.SkipTest("eager function failed")
+
+            expected = [raw] if not isinstance(raw, (tuple, list)) else raw
+
+            if len(expected) < 1:
+                raise unittest.SkipTest("function should return something")
+
+            if not isinstance(expected[0], torch.Tensor):
+                raise unittest.SkipTest(f"function doesn't return tensor: {type(expected[0])}")
+
+            result = build_function_for_native(
+                f=f,
+                op_name=op_overloaded_name,
+                sample=sample,
+                id=f"function_{f.func.name.unambiguous_name()}",
+                out_tensors=len(expected)
+            )()
+
+            self.assertEqual(len(expected), len(result))
+
+            for exp, res in zip(expected, result):
+                if op.name in NONDETERMINISTIC_LIST:
+                    self.assertTrue(similar(exp, res, dtype))
+                else:
+                    self.assertTrue(equals(exp, res, dtype))
+
     @onlyCPU
     @ops(op_db, dtypes=[torch.float])
     def test_jit(self, device, dtype, op: OpInfo):
@@ -268,41 +323,7 @@ class TestOps(unittest.TestCase):
             # Satisfying the typing hints.
             assert native_function is not None
 
-            with native_function_manager(native_function):
-                op_overloaded_name = native_function_overloaded_name(native_function)
-
-                if not nat.operation_in_registry(op_overloaded_name):
-                    continue
-
-                try:
-                    raw = op(
-                        sample.input,
-                        *sample.args,
-                        **sample.kwargs
-                    )
-                except Exception:
-                    raise unittest.SkipTest("eager function failed")
-
-                expected = [raw] if not isinstance(raw, (tuple, list)) else raw
-
-                if len(expected) < 1:
-                    raise unittest.SkipTest("function should return something")
-
-                if not isinstance(expected[0], torch.Tensor):
-                    raise unittest.SkipTest(f"function doesn't return tensor: {type(expected[0])}")
-
-                function_id = f"function_{native_function.func.name.unambiguous_name()}"
-                result = build_function_for_native(
-                    f=native_function,
-                    op_name=op_overloaded_name,
-                    sample=sample,
-                    id=function_id,
-                    out_tensors=len(expected)
-                )()
-
-                self.assertEqual(len(expected), len(result))
-                for exp, res in zip(expected, result):
-                    self.assertTrue(equals(exp, res, dtype))
+            self._test_native_function(native_function, op, sample, dtype)
 
 
 instantiate_device_type_tests(TestOps, globals())
