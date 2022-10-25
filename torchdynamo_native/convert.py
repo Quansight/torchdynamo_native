@@ -115,12 +115,17 @@ def get_values_for_array(
 ) -> Tuple[Value, Value]:
     assert isinstance(ctype, BaseCType), f"can only build nullopt for BaseCType. Got: {ctype}"
 
-    def build_array_tensor_from_ref(array: List[Value]) -> Value:
-        return fn.build_array_tensor([fn.build_load(x) for x in array])
+    def build_array_from_ref_fn(
+            build_fn: Callable[[List[Value]], Value]
+    ) -> Callable[[List[Value]], Value]:
+        def inner(array: List[Value]) -> Value:
+            return build_fn([fn.build_load(x) for x in array])
+        return inner
 
     cpp_type_table: Dict[BaseCppType, Tuple[type, Callable[[List[Value]], Value]]] = {
-        longT:   (int,   fn.build_array_int),
-        tensorT: (Value, build_array_tensor_from_ref),
+        longT:   (int,    fn.build_array_int),
+        scalarT: (object, build_array_from_ref_fn(fn.build_array_scalar)),
+        tensorT: (Value,  build_array_from_ref_fn(fn.build_array_tensor)),
     }
 
     if ctype.type in cpp_type_table:
@@ -153,6 +158,7 @@ def get_value_for_nullopt(ctype: CTypeWithPointer, fn: Function) -> Value:
         memoryFormatT: fn.build_nullopt_memory_format,
         deviceT:       fn.build_nullopt_device,
         layoutT:       fn.build_nullopt_layout,
+        scalarT:       fn.build_nullopt_scalar,
     }
 
     if ctype.type in cpp_type_table:
