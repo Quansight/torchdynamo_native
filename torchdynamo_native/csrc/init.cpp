@@ -122,7 +122,10 @@ PYBIND11_MODULE(_C, m)
       .def("dump", &Function::dump)
 
       .def("build_bool", &Function::build_bool)
+
+      // Build: load instructions.
       .def("build_load", &Function::build_load)
+      .def("build_load_for_scalar", &Function::build_load_for<at::Scalar>)
 
       // Build: scalar types.
       .def("build_int", &Function::build_int<int64_t>)

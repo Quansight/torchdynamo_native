@@ -48,19 +48,6 @@ private:
   llvm::Function *_add_aten_op_decl(ATenOpRef ref);
 
   template <typename T>
-  Value _build_scalar(Value val);
-
-  template <typename T, typename Factory>
-  Value _build_optional(c10::optional<Value> val = c10::nullopt);
-
-  template <typename T>
-  Value _build_arrayref(const std::vector<Value> &vals, bool from_literal);
-
-  // Checks whether this function was (not) finalized if
-  // 'expected' is true (false).
-  void _check_finalized(bool expected = false);
-
-  template <typename T>
   llvm::Type *_get_type();
 
 public:
@@ -87,9 +74,12 @@ public:
 
   Value build_bool(bool b);
 
+  Value build_str(const std::string &s);
+
   Value build_load(Value val);
 
-  Value build_str(const std::string &s);
+  template <typename T>
+  Value build_load_for(Value val);
 
   template <typename T>
   Value build_int(T i);

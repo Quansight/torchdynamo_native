@@ -31,6 +31,15 @@ llvm::Type *Function::_get_type()
 }
 
 template <typename T>
+Value Function::build_load_for(Value val)
+{
+  auto load = build_load(val);
+  auto load_inst = llvm::dyn_cast<llvm::LoadInst>(*load);
+  load_inst->setAlignment(llvm::Align::Of<T>());
+  return load;
+}
+
+template <typename T>
 Value Function::build_int(T i)
 {
   static_assert(std::is_integral<T>::value);
