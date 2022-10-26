@@ -1,5 +1,6 @@
 import torchdynamo_native as nat
 
+import dataclasses
 import unittest
 import torch
 
@@ -37,13 +38,14 @@ from typing import (
     Any,
     Callable,
     Dict,
+    Iterator,
     List,
     Sequence,
     Tuple,
     Union
 )
 
-from torchdynamo_native.buildhelper.codegen.kernel import CABIArgument, ConstPointerCType, Kernel
+from torchdynamo_native.buildhelper.codegen.kernel import CABIArgument, ConstPointerCType
 from torchdynamo_native.utils import native_function_overloaded_name
 
 DTYPE_SET = {
@@ -52,19 +54,15 @@ DTYPE_SET = {
     torch.complex128,
 }
 
-NATIVE_FUNCTIONS, BACKEND_INDICES = nat.utils.parse_native_functions_yaml()
-NATIVE_FUNCTIONS_MAP: Dict[str, NativeFunction] = {str(f.func.name): f for f in NATIVE_FUNCTIONS}
+SKIP_OPERATIONS = {
+    "tensordot": "needs pre-processing before native kernel",
+    "stft": "needs pre-processing before native kernel",
+    "corrcoef": "non-deterministic behavior",
+    "cov": "non-deterministic behavior",
+    "where": "input is not the first argument",
+}
 
-SKIP_LIST = [
-    ("tensordot", "needs pre-processing before native kernel"),
-    ("stft", "needs pre-processing before native kernel"),
-
-    ("corrcoef", "non-deterministic behavior"),
-    ("cov", "non-deterministic behavior"),
-    ("where", "input is not the first argument"),
-]
-
-NONDETERMINISTIC_LIST = [
+NONDETERMINISTIC_OPERATIONS = {
     "multinomial",
     "randn",
     "randn_like",
@@ -77,7 +75,7 @@ NONDETERMINISTIC_LIST = [
     "empty_like",
     "new_empty",
     "bernoulli",
-]
+}
 
 
 def pick_dtype_for(op: OpInfo, device) -> torch.dtype:
@@ -196,7 +194,7 @@ def build_function_for_native(
         id: str,
         out_tensors: int
 ) -> Callable[[], List[torch.Tensor]]:
-    kernel = Kernel.from_function_and_indices(f, BACKEND_INDICES)
+    kernel = nat.utils.get_kernel(f)
 
     arguments = nat.align_arguments(
         parameters=f.func.arguments.flat_all,
@@ -237,7 +235,7 @@ def equals(lhs: torch.Tensor, rhs: torch.Tensor, dtype: torch.dtype) -> bool:
     return bool(torch.isclose(lhs.to_dense(), rhs.to_dense(), equal_nan=True).all())
 
 
-def similar(lhs: torch.Tensor, rhs: torch.Tensor, dtype: torch.dtype) -> bool:
+def similar(lhs: torch.Tensor, rhs: torch.Tensor) -> bool:
     if lhs.dtype != rhs.dtype:
         return False
     if lhs.shape != rhs.shape:
@@ -245,13 +243,58 @@ def similar(lhs: torch.Tensor, rhs: torch.Tensor, dtype: torch.dtype) -> bool:
     return True
 
 
+@dataclasses.dataclass
+class TestData:
+    op: OpInfo
+    f: NativeFunction
+    sample: SampleInput
+    dtype: torch.dtype
+
+
 class TestOps(unittest.TestCase):
-    def _test_native_function(
+
+    def _gen_tests_for(
+            self,
+            device: torch.device,
+            dtype: torch.dtype,
+            op: OpInfo,
+            skip: Dict[str, str]
+    ) -> Iterator[TestData]:
+        if op.name in skip:
+            raise unittest.SkipTest(skip[op.name])
+
+        # Overwrite the actual dtype.
+        # We only want to check whether the PyTorch operation is
+        # running correctly.
+        dtype = pick_dtype_for(op, device)
+
+        samples = tuple(
+            op.sample_inputs(device, dtype, requires_grad=False)
+        )
+
+        for sample in samples:
+            try:
+                native_function = nat.find_native_function(
+                    op_name=op.name,
+                    args=[sample.input, *sample.args],
+                    kwargs=sample.kwargs
+                )
+                self.assertIsNotNone(native_function)
+            except Exception:
+                # If there it is not a NativeFunction, bail.
+                continue
+
+            # Satisfying the typing hints.
+            assert native_function is not None
+            yield TestData(op, native_function, sample, dtype)
+
+    def _test(
             self,
             f: NativeFunction,
-            op: OpInfo,
+            op: Callable[..., Union[torch.Tensor, List[torch.Tensor]]],
             sample: SampleInput,
-            dtype: torch.dtype
+            dtype: torch.dtype,
+            check_equality: bool = True,
     ):
         with native_function_manager(f):
             op_overloaded_name = native_function_overloaded_name(f)
@@ -287,43 +330,22 @@ class TestOps(unittest.TestCase):
             self.assertEqual(len(expected), len(result))
 
             for exp, res in zip(expected, result):
-                if op.name in NONDETERMINISTIC_LIST:
-                    self.assertTrue(similar(exp, res, dtype))
-                else:
+                self.assertTrue(similar(exp, res))
+
+                if check_equality:
                     self.assertTrue(equals(exp, res, dtype))
 
     @onlyCPU
     @ops(op_db, dtypes=[torch.float])
-    def test_jit(self, device, dtype, op: OpInfo):
-        for op_name, msg in SKIP_LIST:
-            if op.name == op_name:
-                raise unittest.SkipTest(msg)
-
-        # Overwrite the actual dtype.
-        # We only want to check whether the PyTorch operation is
-        # running correctly.
-        dtype = pick_dtype_for(op, device)
-
-        samples = tuple(
-            op.sample_inputs(device, dtype, requires_grad=False)
-        )
-
-        for sample in samples:
-            try:
-                native_function = nat.find_native_function(
-                    op_name=op.name,
-                    args=[sample.input, *sample.args],
-                    kwargs=sample.kwargs
-                )
-                self.assertIsNotNone(native_function)
-            except Exception:
-                # If there it is not a NativeFunction, bail.
-                continue
-
-            # Satisfying the typing hints.
-            assert native_function is not None
-
-            self._test_native_function(native_function, op, sample, dtype)
+    def test_jit(self, device: torch.device, dtype: torch.dtype, op: OpInfo):
+        for test in self._gen_tests_for(device, dtype, op, SKIP_OPERATIONS):
+            self._test(
+                f=test.f,
+                op=test.op,
+                sample=test.sample,
+                dtype=test.dtype,
+                check_equality=op.name not in NONDETERMINISTIC_OPERATIONS
+            )
 
 
 instantiate_device_type_tests(TestOps, globals())
