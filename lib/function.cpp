@@ -16,6 +16,8 @@
 
 using namespace tdnat;
 
+static const char *const ENTRY_BB_NAME = "entry";
+
 llvm::Function *Function::_add_aten_op_decl(ATenOpRef ref)
 {
   auto &mod = *module_.getModuleUnlocked();
@@ -32,14 +34,7 @@ llvm::Function *Function::_add_aten_op_decl(ATenOpRef ref)
   return mod.getFunction(ref.name());
 }
 
-Function::Function(
-    std::unique_ptr<llvm::Module> mod,
-    std::unique_ptr<llvm::LLVMContext> ctx,
-    FunctionData data
-) :
-    data_(std::move(data)),
-    module_(std::move(mod), std::move(ctx)),
-    builder_(*module_.getContext().getContext())
+void Function::init()
 {
   auto &module = *module_.getModuleUnlocked();
 
@@ -56,8 +51,25 @@ Function::Function(
       module
   );
 
-  // Move builder to the first basic block of the function.
-  builder_.SetInsertPoint(llvm::BasicBlock::Create(module.getContext(), "entry", fn_));
+  // Create the entry BasicBlock, and add a void return instruction to it.
+  builder_.SetInsertPoint(llvm::BasicBlock::Create(module.getContext(), ENTRY_BB_NAME, fn_));
+  auto return_instruction = builder_.CreateRetVoid();
+
+  // Move builder before the return instruction.
+  builder_.SetInsertPoint(return_instruction);
+}
+
+Function::Function(
+    std::unique_ptr<llvm::Module> mod,
+    std::unique_ptr<llvm::LLVMContext> ctx,
+    FunctionData data
+) :
+    data_(std::move(data)),
+    module_(std::move(mod), std::move(ctx)),
+    fn_(nullptr),
+    builder_(*module_.getContext().getContext())
+{
+  init();
 }
 
 Value Function::set_placeholder(int i, const std::string &name)
@@ -149,20 +161,20 @@ void Function::dump()
 
 JITFunction Function::into_jit()
 {
-  if (builder_.GetInsertBlock()->getTerminator() == nullptr) {
-    builder_.CreateRetVoid();
-  }
+  auto clone = llvm::orc::cloneToNewContext(module_);
 
-  auto &mod = *module_.getModuleUnlocked();
-  if (llvm::verifyModule(mod, &llvm::errs())) {
-    mod.print(llvm::errs(), nullptr);
-    TORCH_CHECK(false, "Bad module");
+  {
+    auto &mod = *clone.getModuleUnlocked();
+    if (llvm::verifyModule(mod, &llvm::errs())) {
+      mod.print(llvm::errs(), nullptr);
+      TORCH_CHECK(false, "Bad module");
+    }
   }
 
   auto jit = llvm::cantFail(llvm::orc::LLJITBuilder().create());
-  auto symbols = llvm::orc::SymbolMap(fnaddrmap_.size());
+  llvm::cantFail(jit->addIRModule(std::move(clone)));
 
-  llvm::cantFail(jit->addIRModule(llvm::orc::cloneToNewContext(module_)));
+  auto symbols = llvm::orc::SymbolMap(fnaddrmap_.size());
   for (auto &pair : fnaddrmap_) {
     symbols.insert(std::make_pair(
         jit->mangleAndIntern(pair.first),

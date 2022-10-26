@@ -50,6 +50,8 @@ private:
   template <typename T>
   llvm::Type *_get_type();
 
+  void init();
+
 public:
   Function(
       std::unique_ptr<llvm::Module> mod,
