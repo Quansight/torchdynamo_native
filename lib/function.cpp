@@ -161,10 +161,8 @@ void Function::dump()
 
 JITFunction Function::into_jit()
 {
-  auto clone = llvm::orc::cloneToNewContext(module_);
-
   {
-    auto &mod = *clone.getModuleUnlocked();
+    auto &mod = *module_.getModuleUnlocked();
     if (llvm::verifyModule(mod, &llvm::errs())) {
       mod.print(llvm::errs(), nullptr);
       TORCH_CHECK(false, "Bad module");
@@ -172,7 +170,7 @@ JITFunction Function::into_jit()
   }
 
   auto jit = llvm::cantFail(llvm::orc::LLJITBuilder().create());
-  llvm::cantFail(jit->addIRModule(std::move(clone)));
+  llvm::cantFail(jit->addIRModule(llvm::orc::cloneToNewContext(module_)));
 
   auto symbols = llvm::orc::SymbolMap(fnaddrmap_.size());
   for (auto &pair : fnaddrmap_) {
