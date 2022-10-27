@@ -1,6 +1,7 @@
 #include <tdnat/function.h>
 #include <tdnat/ops.h>
 
+#include <ATen/core/Reduction.h>
 #include <c10/util/Exception.h>
 #include <torch/csrc/Dtype.h>
 #include <torch/csrc/MemoryFormat.h>
@@ -86,7 +87,7 @@ function_init(const std::string &id, size_t in_tensors, size_t out_tensors)
 }
 
 // Wrapper around nat::JITFunction::run.
-static std::vector<at::Tensor*>
+static std::vector<at::Tensor *>
 jitfunction_run(JITFunction &jitfn, const std::vector<at::Tensor> &tensors)
 {
   return jitfn.run(tensors);
@@ -104,6 +105,11 @@ PYBIND11_MODULE(_C, m)
   m.def("operation_in_registry", [](const std::string &opname) {
     return get_aten_op(opname).has_value();
   });
+
+  py::enum_<at::Reduction::Reduction>(m, "TorchReduction")
+      .value("None", at::Reduction::Reduction::None)
+      .value("Mean", at::Reduction::Reduction::Mean)
+      .value("Sum", at::Reduction::Reduction::Sum);
 
   py::class_<Value>(m, "Value").def(py::init());
 
@@ -133,6 +139,7 @@ PYBIND11_MODULE(_C, m)
       .def("build_str", &Function::build_str)
 
       // Build: enumerator types.
+      .def("build_int_from_reduction", &Function::build_int_from_enum<int64_t, at::Reduction::Reduction>)
       .def("build_int_from_scalar_type", &Function::build_int_from_enum<int8_t, at::ScalarType>)
       .def("build_int_from_memory_format", &Function::build_int_from_enum<int8_t, at::MemoryFormat>)
 

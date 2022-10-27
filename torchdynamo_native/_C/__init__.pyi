@@ -1,9 +1,16 @@
 from typing import List
+from enum import auto, Enum
 
 import torch
 
 
 def operation_in_registry(opname: str) -> bool: ...
+
+
+class TorchReduction(Enum):
+    NONE = auto()
+    MEAN = auto()
+    SUM = auto()
 
 
 class Value:
@@ -28,6 +35,7 @@ class Function:
     def build_float(self, f: float) -> Value: ...
     def build_str(self, s: str) -> Value: ...
 
+    def build_int_from_reduction(self, reduction: TorchReduction) -> Value: ...
     def build_int_from_scalar_type(self, scalar_type: torch.dtype) -> Value: ...
     def build_int_from_memory_format(self, memory_format: torch.memory_format) -> Value: ...
 
