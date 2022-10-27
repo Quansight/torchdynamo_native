@@ -41,10 +41,16 @@ from torchgen.api.types import (
     tensorT
 )
 
-from torchdynamo_native._C import Function, Value
+from torchdynamo_native._C import Function, Value, TorchReduction
 from torchdynamo_native.buildhelper.codegen.kernel import CTypeWithPointer, CharT, ConstPointerCType
 
-REDUCTION_MEAN = "Mean"
+
+def is_reduction_str(s: str) -> bool:
+    return s in TorchReduction.__members__
+
+
+def str_to_reduction(s: str) -> TorchReduction:
+    return TorchReduction.__members__[s]
 
 
 def str_to_py(thing: str, ty: Type) -> Any:
@@ -53,8 +59,8 @@ def str_to_py(thing: str, ty: Type) -> Any:
     if ty == BaseType(BaseTy.int):
         # Special case: at::Reduction.
         # Defer translation to Function.
-        if thing == REDUCTION_MEAN:
-            return thing
+        if isinstance(thing, str) and is_reduction_str(thing):
+            return str_to_reduction(thing)
 
         # Otherwise, we try to parse it into an int.
         try:
@@ -69,7 +75,7 @@ def str_to_py(thing: str, ty: Type) -> Any:
             pass
 
     elif ty == BaseType(BaseTy.str):
-        if thing[0] == thing[-1] == "'":
+        if thing[0] == thing[-1] == "'" or thing[0] == thing[-1] == '"':
             return thing[1:-1]
         else:
             return thing
@@ -102,8 +108,10 @@ def str_to_py(thing: str, ty: Type) -> Any:
         if ty.elem == BaseType(BaseTy.int):
             if len(thing) == 2:
                 return []
-            if len(thing) > 2:
+            if len(thing) > 2 and thing[0] == "[" and thing[-1] == "]":
                 return [int(x) for x in thing[1:-1].split(",")]
+            if thing.isdecimal():
+                return [int(thing)]
 
     raise ValueError(f"can't build {ty} from str: {thing}")
 
@@ -228,6 +236,9 @@ def py_to_value(thing: Any, ctype: CTypeWithPointer, fn: Function) -> Value:
         if isinstance(thing, int):
             return fn.build_int(thing)
 
+        elif isinstance(thing, TorchReduction):
+            return fn.build_int_from_reduction(thing)
+
         elif isinstance(thing, (tuple, list, str)):
             return fn.build_int(len(thing))
 
@@ -275,8 +286,8 @@ def torch_isinstance(thing: Any, ty: Type) -> bool:
 
     elif ty == BaseType(BaseTy.int):
         # Special case: at::Reduction.
-        if thing == REDUCTION_MEAN:
-            return True
+        if isinstance(thing, str):
+            return is_reduction_str(thing)
         # Otherwise, we just check if it is an integer.
         return isinstance(thing, int)
 
