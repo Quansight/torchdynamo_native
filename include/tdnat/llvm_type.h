@@ -223,6 +223,29 @@ struct LLVMType<at::Storage> {
 };
 
 template <>
+struct LLVMType<c10::complex<double>> {
+  static std::string name()
+  {
+    return "c10::complex<double>";
+  }
+
+  static llvm::Type *get(llvm::Module &module)
+  {
+    return get_or_create_type_by_name<c10::complex<double>>(module);
+  }
+
+  static llvm::StructType *create(llvm::Module &module)
+  {
+    auto &context = module.getContext();
+    return llvm::StructType::create(
+        {llvm::Type::getDoubleTy(context), llvm::Type::getDoubleTy(context)},
+        name(),
+        false
+    );
+  }
+};
+
+template <>
 struct LLVMType<at::Scalar> {
   static std::string name()
   {
@@ -239,11 +262,11 @@ struct LLVMType<at::Scalar> {
     auto &context = module.getContext();
     return llvm::StructType::create(
         {llvm::Type::getInt32Ty(context),
+
+         // Padding struct so that 'complex<double>' is 16-byte aligned.
          llvm::ArrayType::get(llvm::Type::getInt8Ty(context), sizeof(double) * 2 - 4),
-         llvm::StructType::get(
-             context,
-             {llvm::Type::getDoubleTy(context), llvm::Type::getDoubleTy(context)}
-         )},
+
+         LLVMType<c10::complex<double>>::get(module)},
         name(),
         false
     );
@@ -532,5 +555,12 @@ struct LLVMRetType<c10::optional<T>, std::enable_if_t<IsInt8EnumType<T>::value>>
     return LLVMType<int16_t>::get(module);
   }
 };
+
+template <typename... Args>
+std::string concat_type_names()
+{
+  std::array<std::string, sizeof...(Args)> names = {LLVMType<Args>::name()...};
+  return std::accumulate(names.begin(), names.end(), std::string());
+}
 
 } // namespace tdnat

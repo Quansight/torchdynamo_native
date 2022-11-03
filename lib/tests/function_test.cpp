@@ -32,7 +32,7 @@ TEST(FunctionTest, AddTest)
     auto rhs = fn->set_placeholder(1, "rhs");
 
     auto alpha_int = fn->build_int<int64_t>(alpha);
-    auto alpha_ = fn->build_scalar<int64_t>(alpha_int);
+    auto alpha_ = fn->build_scalar<int64_t, int64_t>(alpha_int);
     auto add = fn->add_call("add", "add.Tensor", {lhs, rhs, alpha_});
 
     fn->set_output_from_ref(add);

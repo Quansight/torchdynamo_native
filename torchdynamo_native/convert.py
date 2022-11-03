@@ -255,6 +255,11 @@ def py_to_value(thing: Any, ctype: CTypeWithPointer, fn: Function) -> Value:
         if isinstance(thing, float):
             return fn.build_scalar_float(py_to_value(thing, BaseCType(doubleT), fn))
 
+        if isinstance(thing, complex):
+            real = py_to_value(thing.real, BaseCType(doubleT), fn)
+            imag = py_to_value(thing.imag, BaseCType(doubleT), fn)
+            return fn.build_scalar_complex(real, imag)
+
     elif ctype == BaseCType(optionalIntArrayRefT):
         if thing is None:
             return fn.build_nullopt_optionalarrayref_int()
@@ -307,6 +312,7 @@ def torch_isinstance(thing: Any, ty: Type) -> bool:
         return (
             torch_isinstance(thing, BaseType(BaseTy.int))
             or torch_isinstance(thing, BaseType(BaseTy.float))
+            or isinstance(thing, complex)
         )
 
     elif ty == BaseType(BaseTy.MemoryFormat):

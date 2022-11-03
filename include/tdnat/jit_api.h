@@ -31,16 +31,16 @@ namespace jit
 //   2. T run(...)
 //     The actual function.
 
-template <typename T>
+template <typename T, typename... Args>
 struct Scalar {
   static std::string name()
   {
-    return "Scalar<" + LLVMType<T>::name() + ">";
+    return "Scalar(" + LLVMType<T>::name() + ")<" + concat_type_names<Args...>() + ">";
   }
 
-  static at::Scalar *run(T val)
+  static at::Scalar *run(Args... args)
   {
-    return new at::Scalar(val);
+    return new at::Scalar(T(args...));
   }
 };
 
@@ -48,8 +48,7 @@ template <typename T, typename... Args>
 struct Optional {
   static std::string name()
   {
-    return std::string("Optional") + std::to_string(sizeof...(Args)) + "<" + LLVMType<T>::name() +
-           ">";
+    return "Optional(" + LLVMType<T>::name() + ")<" + concat_type_names<Args...>() + ">";
   }
 
   static c10::optional<T> *run(Args... args)

@@ -144,8 +144,9 @@ PYBIND11_MODULE(_C, m)
       .def("build_int_from_memory_format", &Function::build_int_from_enum<int8_t, at::MemoryFormat>)
 
       // Build: Scalar.
-      .def("build_scalar_int", &Function::build_scalar<int64_t>)
-      .def("build_scalar_float", &Function::build_scalar<double>)
+      .def("build_scalar_int", &Function::build_scalar<int64_t, int64_t>)
+      .def("build_scalar_float", &Function::build_scalar<double, double>)
+      .def("build_scalar_complex", &Function::build_scalar<c10::complex<double>, double, double>)
 
       // Build: ArrayRef<T>.
       .def("build_array_int", &Function::build_array<int64_t>)
