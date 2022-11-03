@@ -5,6 +5,7 @@ from typing import Dict, List, Sequence, Type, Union
 
 from torchgen.api import cpp, dispatcher
 from torchgen.api.types import (
+    ArrayCType,
     ArrayRefCType,
     BaseCType,
     BaseCppType,
@@ -22,6 +23,8 @@ from torchgen.api.types import (
     deviceT,
     doubleT,
     intArrayRefT,
+    iTensorListRefT,
+    iOptTensorListRefT,
     layoutT,
     longT,
     memoryFormatT,
@@ -53,6 +56,14 @@ def is_c_array_ref_like_type(type: CType) -> bool:
             and type.type in (stringT, intArrayRefT, tensorListT)
         )
     )
+
+
+def is_c_ilist_ref_like_type(type: CType) -> bool:
+    if isinstance(type, BaseCType):
+        return type.type in (iTensorListRefT, iOptTensorListRefT)
+    elif isinstance(type, ConstRefCType):
+        return is_c_ilist_ref_like_type(type.elem)
+    return False
 
 
 def group_by_binding(arguments: Sequence["CABIArgument"]) -> Dict[Binding, List["CABIArgument"]]:
@@ -95,11 +106,13 @@ class CABIArgument:
         if type.type in (deviceT, optionalIntArrayRefT):
             return [CABIArgument(name=binding.name, type=MutRefCType(type), binding=binding)]
 
-        if type.type in (intArrayRefT, stringT, tensorListT):
+        if type.type in (intArrayRefT, stringT, tensorListT, iTensorListRefT, iOptTensorListRefT):
             elem_type_of = {
-                intArrayRefT: longT,
-                stringT: CharT,
-                tensorListT: tensorT,
+                intArrayRefT:       longT,
+                stringT:            CharT,
+                tensorListT:        tensorT,
+                iTensorListRefT:    tensorT,
+                iOptTensorListRefT: OptionalCType(BaseCType(tensorT)),
             }
 
             return CABIArgument.from_binding_with_type(
@@ -114,13 +127,16 @@ class CABIArgument:
         if isinstance(type, BaseCType):
             return CABIArgument.from_binding_with_base_type(binding, type)
 
-        if isinstance(type, (MutRefCType, ConstRefCType)):
-            return [CABIArgument(name=binding.name, type=type, binding=binding)]
+        elif isinstance(type, (MutRefCType, ConstRefCType)):
+            if is_c_ilist_ref_like_type(type.elem):
+                return CABIArgument.from_binding_with_type(binding, type.elem)
+            else:
+                return [CABIArgument(name=binding.name, type=type, binding=binding)]
 
-        if isinstance(type, OptionalCType):
+        elif isinstance(type, OptionalCType):
             return [CABIArgument(name=binding.name, type=MutRefCType(type), binding=binding)]
 
-        if isinstance(type, ArrayRefCType):
+        elif isinstance(type, (ArrayCType, ArrayRefCType)):
             return [
                 CABIArgument(
                     name=f"{binding.name}__ptr",
@@ -134,7 +150,8 @@ class CABIArgument:
                 ),
             ]
 
-        raise ValueError(f"can't convert to C ABI type: {type}")
+        else:
+            raise ValueError(f"can't convert to C ABI type: {type}")
 
     @staticmethod
     def from_binding(binding: Binding) -> List["CABIArgument"]:
