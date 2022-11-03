@@ -50,6 +50,8 @@ private:
   template <typename T>
   llvm::Type *_get_type();
 
+  void init();
+
 public:
   Function(
       std::unique_ptr<llvm::Module> mod,
@@ -90,8 +92,8 @@ public:
   template <typename T>
   Value build_float(T f);
 
-  template <typename T>
-  Value build_scalar(Value literal);
+  template <typename T, typename... Args>
+  Value build_scalar(typename replace<Args, Value>::type... args);
 
   template <typename T>
   Value build_array(const std::vector<Value> &elements);

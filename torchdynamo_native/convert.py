@@ -41,10 +41,16 @@ from torchgen.api.types import (
     tensorT
 )
 
-from torchdynamo_native._C import Function, Value
+from torchdynamo_native._C import Function, Value, TorchReduction
 from torchdynamo_native.buildhelper.codegen.kernel import CTypeWithPointer, CharT, ConstPointerCType
 
-REDUCTION_MEAN = "Mean"
+
+def is_reduction_str(s: str) -> bool:
+    return s in TorchReduction.__members__
+
+
+def str_to_reduction(s: str) -> TorchReduction:
+    return TorchReduction.__members__[s]
 
 
 def str_to_py(thing: str, ty: Type) -> Any:
@@ -53,8 +59,8 @@ def str_to_py(thing: str, ty: Type) -> Any:
     if ty == BaseType(BaseTy.int):
         # Special case: at::Reduction.
         # Defer translation to Function.
-        if thing == REDUCTION_MEAN:
-            return thing
+        if isinstance(thing, str) and is_reduction_str(thing):
+            return str_to_reduction(thing)
 
         # Otherwise, we try to parse it into an int.
         try:
@@ -69,7 +75,7 @@ def str_to_py(thing: str, ty: Type) -> Any:
             pass
 
     elif ty == BaseType(BaseTy.str):
-        if thing[0] == thing[-1] == "'":
+        if thing[0] == thing[-1] == "'" or thing[0] == thing[-1] == '"':
             return thing[1:-1]
         else:
             return thing
@@ -102,8 +108,10 @@ def str_to_py(thing: str, ty: Type) -> Any:
         if ty.elem == BaseType(BaseTy.int):
             if len(thing) == 2:
                 return []
-            if len(thing) > 2:
+            if len(thing) > 2 and thing[0] == "[" and thing[-1] == "]":
                 return [int(x) for x in thing[1:-1].split(",")]
+            if thing.isdecimal():
+                return [int(thing)]
 
     raise ValueError(f"can't build {ty} from str: {thing}")
 
@@ -191,6 +199,7 @@ def get_value_for_optional(
             longT:         (int,                 fn.build_optional_int),
             doubleT:       (float,               fn.build_optional_float),
             memoryFormatT: (torch.memory_format, fn.build_optional_memory_format),
+            scalarTypeT:   (torch.dtype,         fn.build_optional_scalar_type),
         }
 
         if ctype.type in cpp_type_table:
@@ -228,6 +237,9 @@ def py_to_value(thing: Any, ctype: CTypeWithPointer, fn: Function) -> Value:
         if isinstance(thing, int):
             return fn.build_int(thing)
 
+        elif isinstance(thing, TorchReduction):
+            return fn.build_int_from_reduction(thing)
+
         elif isinstance(thing, (tuple, list, str)):
             return fn.build_int(len(thing))
 
@@ -237,12 +249,20 @@ def py_to_value(thing: Any, ctype: CTypeWithPointer, fn: Function) -> Value:
     elif ctype == BaseCType(memoryFormatT):
         return fn.build_int_from_memory_format(thing)
 
+    elif ctype == BaseCType(scalarTypeT):
+        return fn.build_int_from_scalar_type(thing)
+
     elif ctype == BaseCType(scalarT):
         if isinstance(thing, int):
             return fn.build_scalar_int(py_to_value(thing, BaseCType(longT), fn))
 
         if isinstance(thing, float):
             return fn.build_scalar_float(py_to_value(thing, BaseCType(doubleT), fn))
+
+        if isinstance(thing, complex):
+            real = py_to_value(thing.real, BaseCType(doubleT), fn)
+            imag = py_to_value(thing.imag, BaseCType(doubleT), fn)
+            return fn.build_scalar_complex(real, imag)
 
     elif ctype == BaseCType(optionalIntArrayRefT):
         if thing is None:
@@ -275,8 +295,8 @@ def torch_isinstance(thing: Any, ty: Type) -> bool:
 
     elif ty == BaseType(BaseTy.int):
         # Special case: at::Reduction.
-        if thing == REDUCTION_MEAN:
-            return True
+        if isinstance(thing, str):
+            return is_reduction_str(thing)
         # Otherwise, we just check if it is an integer.
         return isinstance(thing, int)
 
@@ -292,10 +312,14 @@ def torch_isinstance(thing: Any, ty: Type) -> bool:
     elif ty == BaseType(BaseTy.bool):
         return isinstance(thing, bool)
 
+    elif ty == BaseType(BaseTy.ScalarType):
+        return isinstance(thing, torch.dtype)
+
     elif ty == BaseType(BaseTy.Scalar):
         return (
             torch_isinstance(thing, BaseType(BaseTy.int))
             or torch_isinstance(thing, BaseType(BaseTy.float))
+            or isinstance(thing, complex)
         )
 
     elif ty == BaseType(BaseTy.MemoryFormat):

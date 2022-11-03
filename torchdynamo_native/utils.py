@@ -15,6 +15,8 @@ from torchgen.model import (
 
 from torchgen.gen import ParsedYaml, parse_native_yaml
 
+from torchdynamo_native.buildhelper.codegen.kernel import Kernel
+
 
 @dataclass(frozen=True)
 class OverloadInfo:
@@ -65,5 +67,9 @@ def group_native_functions_overloads(
     return map_by_name
 
 
-NATIVE_FUNCTIONS, _ = parse_native_functions_yaml()
+NATIVE_FUNCTIONS, BACKEND_INDICES = parse_native_functions_yaml()
 NATIVE_FUNCTIONS_OVERLOAD_MAP = group_native_functions_overloads(NATIVE_FUNCTIONS)
+
+
+def get_kernel(f: NativeFunction) -> Kernel:
+    return Kernel.from_function_and_indices(f, BACKEND_INDICES)

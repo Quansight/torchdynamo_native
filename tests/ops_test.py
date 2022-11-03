@@ -1,7 +1,10 @@
 import torchdynamo_native as nat
 
+import dataclasses
 import unittest
 import torch
+
+from collections import defaultdict
 
 from torch.testing._internal.common_device_type import (
     instantiate_device_type_tests,
@@ -37,13 +40,14 @@ from typing import (
     Any,
     Callable,
     Dict,
+    Iterator,
     List,
     Sequence,
     Tuple,
     Union
 )
 
-from torchdynamo_native.buildhelper.codegen.kernel import CABIArgument, ConstPointerCType, Kernel
+from torchdynamo_native.buildhelper.codegen.kernel import CABIArgument, ConstPointerCType
 from torchdynamo_native.utils import native_function_overloaded_name
 
 DTYPE_SET = {
@@ -52,19 +56,17 @@ DTYPE_SET = {
     torch.complex128,
 }
 
-NATIVE_FUNCTIONS, BACKEND_INDICES = nat.utils.parse_native_functions_yaml()
-NATIVE_FUNCTIONS_MAP: Dict[str, NativeFunction] = {str(f.func.name): f for f in NATIVE_FUNCTIONS}
+SKIP_OPERATIONS = {
+    "tensordot": "needs pre-processing before native kernel",
+    "stft": "needs pre-processing before native kernel",
+    "corrcoef": "non-deterministic behavior",
+    "cov": "non-deterministic behavior",
+    "gelu": "at::impl::variable_excluded_from_dispatch() INTERNAL ASSERT FAILED",
+    "vander": "actual operation: linalg_vander",
+    "where": "input is not the first argument",
+}
 
-SKIP_LIST = [
-    ("tensordot", "needs pre-processing before native kernel"),
-    ("stft", "needs pre-processing before native kernel"),
-
-    ("corrcoef", "non-deterministic behavior"),
-    ("cov", "non-deterministic behavior"),
-    ("where", "input is not the first argument"),
-]
-
-NONDETERMINISTIC_LIST = [
+NONDETERMINISTIC_OPERATIONS = {
     "multinomial",
     "randn",
     "randn_like",
@@ -77,7 +79,7 @@ NONDETERMINISTIC_LIST = [
     "empty_like",
     "new_empty",
     "bernoulli",
-]
+}
 
 
 def pick_dtype_for(op: OpInfo, device) -> torch.dtype:
@@ -196,7 +198,7 @@ def build_function_for_native(
         id: str,
         out_tensors: int
 ) -> Callable[[], List[torch.Tensor]]:
-    kernel = Kernel.from_function_and_indices(f, BACKEND_INDICES)
+    kernel = nat.utils.get_kernel(f)
 
     arguments = nat.align_arguments(
         parameters=f.func.arguments.flat_all,
@@ -237,7 +239,7 @@ def equals(lhs: torch.Tensor, rhs: torch.Tensor, dtype: torch.dtype) -> bool:
     return bool(torch.isclose(lhs.to_dense(), rhs.to_dense(), equal_nan=True).all())
 
 
-def similar(lhs: torch.Tensor, rhs: torch.Tensor, dtype: torch.dtype) -> bool:
+def similar(lhs: torch.Tensor, rhs: torch.Tensor) -> bool:
     if lhs.dtype != rhs.dtype:
         return False
     if lhs.shape != rhs.shape:
@@ -245,59 +247,63 @@ def similar(lhs: torch.Tensor, rhs: torch.Tensor, dtype: torch.dtype) -> bool:
     return True
 
 
+def clone_input(
+        input: Union[torch.Tensor, Tuple[torch.Tensor], List[torch.Tensor]]
+) -> Union[torch.Tensor, Tuple[torch.Tensor, ...], List[torch.Tensor]]:
+    if isinstance(input, torch.Tensor):
+        return input.clone()
+
+    assert isinstance(input[0], torch.Tensor)
+
+    if isinstance(input, list):
+        return [t.clone() for t in input]
+    elif isinstance(input, tuple):
+        return tuple(t.clone() for t in input)
+
+    raise ValueError("input is not a Tensor.")
+
+
+class NativeFunctionNotFoundError(Exception):
+    ...
+
+class OverloadNotRegisteredError(Exception):
+    ...
+
+
+class EagerFailedError(Exception):
+    ...
+
+
+class VoidFunctionError(Exception):
+    ...
+
+
+class UnexpectedReturnValueError(Exception):
+    ...
+
+
+@dataclasses.dataclass
+class TestData:
+    op: OpInfo
+    f: NativeFunction
+    sample: SampleInput
+    dtype: torch.dtype
+
+
 class TestOps(unittest.TestCase):
-    def _test_native_function(
+    def _tests_for(
             self,
-            f: NativeFunction,
+            device: torch.device,
+            dtype: torch.dtype,
             op: OpInfo,
-            sample: SampleInput,
-            dtype: torch.dtype
-    ):
-        with native_function_manager(f):
-            op_overloaded_name = native_function_overloaded_name(f)
+            skip: Dict[str, str] = {},
+            inplace: bool = False
+    ) -> Iterator[Union[TestData, Exception]]:
+        name = op.name.split(".")[-1]
+        name = f"{name}_" if inplace else name
 
-            if not nat.operation_in_registry(op_overloaded_name):
-                return
-
-            try:
-                raw = op(
-                    sample.input,
-                    *sample.args,
-                    **sample.kwargs
-                )
-            except Exception:
-                raise unittest.SkipTest("eager function failed")
-
-            expected = [raw] if not isinstance(raw, (tuple, list)) else raw
-
-            if len(expected) < 1:
-                raise unittest.SkipTest("function should return something")
-
-            if not isinstance(expected[0], torch.Tensor):
-                raise unittest.SkipTest(f"function doesn't return tensor: {type(expected[0])}")
-
-            result = build_function_for_native(
-                f=f,
-                op_name=op_overloaded_name,
-                sample=sample,
-                id=f"function_{f.func.name.unambiguous_name()}",
-                out_tensors=len(expected)
-            )()
-
-            self.assertEqual(len(expected), len(result))
-
-            for exp, res in zip(expected, result):
-                if op.name in NONDETERMINISTIC_LIST:
-                    self.assertTrue(similar(exp, res, dtype))
-                else:
-                    self.assertTrue(equals(exp, res, dtype))
-
-    @onlyCPU
-    @ops(op_db, dtypes=[torch.float])
-    def test_jit(self, device, dtype, op: OpInfo):
-        for op_name, msg in SKIP_LIST:
-            if op.name == op_name:
-                raise unittest.SkipTest(msg)
+        if name in skip:
+            raise unittest.SkipTest(skip[name])
 
         # Overwrite the actual dtype.
         # We only want to check whether the PyTorch operation is
@@ -311,19 +317,126 @@ class TestOps(unittest.TestCase):
         for sample in samples:
             try:
                 native_function = nat.find_native_function(
-                    op_name=op.name,
+                    op_name=name,
                     args=[sample.input, *sample.args],
                     kwargs=sample.kwargs
                 )
-                self.assertIsNotNone(native_function)
-            except Exception:
-                # If there it is not a NativeFunction, bail.
-                continue
 
-            # Satisfying the typing hints.
-            assert native_function is not None
+                # Satisfying the typing hints.
+                assert native_function is not None
 
-            self._test_native_function(native_function, op, sample, dtype)
+                yield TestData(op, native_function, sample, dtype)
+            except Exception as e:
+                yield NativeFunctionNotFoundError(e)
+
+    def _test(
+            self,
+            f: NativeFunction,
+            op: Callable[..., Union[torch.Tensor, List[torch.Tensor]]],
+            sample: SampleInput,
+            dtype: torch.dtype,
+            check_equality: bool = True,
+    ):
+        with native_function_manager(f):
+            op_overloaded_name = native_function_overloaded_name(f)
+
+            if not nat.operation_in_registry(op_overloaded_name):
+                raise OverloadNotRegisteredError(op_overloaded_name)
+
+            try:
+                input_clone = clone_input(sample.input)
+                raw = op(input_clone, *sample.args, **sample.kwargs)
+            except Exception as e:
+                raise EagerFailedError(e)
+
+            expected = [raw] if not isinstance(raw, (tuple, list)) else raw
+
+            if len(expected) < 1:
+                raise VoidFunctionError()
+
+            if not isinstance(expected[0], torch.Tensor):
+                raise UnexpectedReturnValueError(type(expected[0]))
+
+            result = build_function_for_native(
+                f=f,
+                op_name=op_overloaded_name,
+                sample=sample,
+                id=f"function_{f.func.name.unambiguous_name()}",
+                out_tensors=len(expected)
+            )()
+
+            self.assertEqual(len(expected), len(result))
+
+            for exp, res in zip(expected, result):
+                self.assertTrue(similar(exp, res))
+
+                if check_equality:
+                    self.assertTrue(equals(exp, res, dtype))
+
+    def _track_errors(self, tests: Iterator[Union[TestData, Exception]], test_it: Callable) -> None:
+        success_count = 0
+        exceptions = defaultdict(list)
+
+        for test in tests:
+            try:
+                if isinstance(test, Exception):
+                    raise test
+
+                test_it(test)
+                success_count += 1
+            except (
+                    NativeFunctionNotFoundError,
+                    OverloadNotRegisteredError,
+                    EagerFailedError,
+                    VoidFunctionError,
+                    UnexpectedReturnValueError
+            ) as e:
+                exceptions[type(e)].append(e)
+
+        if success_count == 0 and len(exceptions) > 0:
+            exp_list = ", ".join([
+                f"{ty.__name__}({v[0]}): {len(v)}"
+                for ty, v in exceptions.items()
+            ])
+            raise unittest.SkipTest(str(exp_list))
+
+
+    @onlyCPU
+    @ops(op_db, dtypes=[torch.float])
+    def test_jit(self, device: torch.device, dtype: torch.dtype, op: OpInfo):
+        def test_it(test: TestData):
+            self._test(
+                f=test.f,
+                op=test.op,
+                sample=test.sample,
+                dtype=test.dtype,
+                check_equality=op.name not in NONDETERMINISTIC_OPERATIONS
+            )
+
+        self._track_errors(
+            tests=self._tests_for(device, dtype, op, SKIP_OPERATIONS),
+            test_it=test_it,
+        )
+
+    @onlyCPU
+    @ops(op_db, dtypes=[torch.float])
+    def test_jit_inplace(self, device: torch.device, dtype: torch.dtype, op: OpInfo):
+        if op.inplace_variant is None:
+            raise unittest.SkipTest(f"no in-place variant for: {op.name}")
+
+        def test_it(test: TestData):
+            self._test(
+                f=test.f,
+                op=test.op.inplace_variant,
+                sample=test.sample,
+                dtype=test.dtype,
+                check_equality=op.name not in NONDETERMINISTIC_OPERATIONS,
+            )
+
+        self._track_errors(
+            tests=self._tests_for(device, dtype, op, SKIP_OPERATIONS, inplace=True),
+            test_it=test_it,
+        )
 
 
 instantiate_device_type_tests(TestOps, globals())
