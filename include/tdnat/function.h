@@ -92,8 +92,8 @@ public:
   template <typename T>
   Value build_float(T f);
 
-  template <typename T>
-  Value build_scalar(Value literal);
+  template <typename T, typename... Args>
+  Value build_scalar(typename replace<Args, Value>::type... args);
 
   template <typename T>
   Value build_array(const std::vector<Value> &elements);

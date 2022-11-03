@@ -59,10 +59,10 @@ Value Function::build_float(T f)
   return {llvm::ConstantFP::get(fn_->getContext(), llvm::APFloat(f))};
 }
 
-template <typename T>
-Value Function::build_scalar(Value literal)
+template <typename T, typename... Args>
+Value Function::build_scalar(typename replace<Args, Value>::type... args)
 {
-  return {builder_.CreateCall(_add_api_decl<jit::Scalar<T>>(), {*literal})};
+  return {builder_.CreateCall(_add_api_decl<jit::Scalar<T, Args...>>(), {*args...})};
 }
 
 template <typename T>
@@ -70,10 +70,12 @@ Value Function::build_array(const std::vector<Value> &elements)
 {
   auto size = *build_int(elements.size());
   auto alloca = builder_.CreateAlloca(_get_type<T>(), size);
+  alloca->setAlignment(llvm::Align::Of<T>());
 
   for (size_t i = 0; i < elements.size(); i++) {
     auto gep = builder_.CreateGEP(alloca, builder_.getInt64(i));
-    builder_.CreateStore(*elements[i], gep);
+    auto store = builder_.CreateStore(*elements[i], gep);
+    store->setAlignment(llvm::Align::Of<T>());
   }
 
   return {alloca};
@@ -82,22 +84,19 @@ Value Function::build_array(const std::vector<Value> &elements)
 template <typename T>
 Value Function::build_nullopt()
 {
-  auto nullopt_fn = _add_api_decl<jit::NullOpt<T>>();
-  return {builder_.CreateCall(nullopt_fn, {})};
+  return {builder_.CreateCall(_add_api_decl<jit::NullOpt<T>>(), {})};
 }
 
 template <typename T, typename... Args>
 Value Function::build_optional(typename replace<Args, Value>::type... args)
 {
-  auto optional_fn = _add_api_decl<jit::Optional<T, Args...>>();
-  return {builder_.CreateCall(optional_fn, {*args...})};
+  return {builder_.CreateCall(_add_api_decl<jit::Optional<T, Args...>>(), {*args...})};
 }
 
 template <typename T>
 Value Function::build_nullopt_optionalarrayref()
 {
-  auto nullopt_fn = _add_api_decl<jit::NullOptOptionalArrayRef<T>>();
-  return {builder_.CreateCall(nullopt_fn, {})};
+  return {builder_.CreateCall(_add_api_decl<jit::NullOptOptionalArrayRef<T>>(), {})};
 }
 
 template <typename T>
