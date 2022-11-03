@@ -243,7 +243,6 @@ setup(
         "torchdynamo_native"
     ],
     install_requires=[
-        "torchdynamo",
         "pybind11",
         "expecttest",
     ],
