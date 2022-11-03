@@ -199,6 +199,7 @@ def get_value_for_optional(
             longT:         (int,                 fn.build_optional_int),
             doubleT:       (float,               fn.build_optional_float),
             memoryFormatT: (torch.memory_format, fn.build_optional_memory_format),
+            scalarTypeT:   (torch.dtype,         fn.build_optional_scalar_type),
         }
 
         if ctype.type in cpp_type_table:
@@ -247,6 +248,9 @@ def py_to_value(thing: Any, ctype: CTypeWithPointer, fn: Function) -> Value:
 
     elif ctype == BaseCType(memoryFormatT):
         return fn.build_int_from_memory_format(thing)
+
+    elif ctype == BaseCType(scalarTypeT):
+        return fn.build_int_from_scalar_type(thing)
 
     elif ctype == BaseCType(scalarT):
         if isinstance(thing, int):
@@ -307,6 +311,9 @@ def torch_isinstance(thing: Any, ty: Type) -> bool:
 
     elif ty == BaseType(BaseTy.bool):
         return isinstance(thing, bool)
+
+    elif ty == BaseType(BaseTy.ScalarType):
+        return isinstance(thing, torch.dtype)
 
     elif ty == BaseType(BaseTy.Scalar):
         return (

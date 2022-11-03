@@ -61,6 +61,8 @@ SKIP_OPERATIONS = {
     "stft": "needs pre-processing before native kernel",
     "corrcoef": "non-deterministic behavior",
     "cov": "non-deterministic behavior",
+    "gelu": "at::impl::variable_excluded_from_dispatch() INTERNAL ASSERT FAILED",
+    "vander": "actual operation: linalg_vander",
     "where": "input is not the first argument",
 }
 
@@ -324,8 +326,8 @@ class TestOps(unittest.TestCase):
                 assert native_function is not None
 
                 yield TestData(op, native_function, sample, dtype)
-            except Exception:
-                yield NativeFunctionNotFoundError(name)
+            except Exception as e:
+                yield NativeFunctionNotFoundError(e)
 
     def _test(
             self,
@@ -419,10 +421,10 @@ class TestOps(unittest.TestCase):
     @onlyCPU
     @ops(op_db, dtypes=[torch.float])
     def test_jit_inplace(self, device: torch.device, dtype: torch.dtype, op: OpInfo):
-        def test_it(test: TestData):
-            if op.inplace_variant is None:
-                raise unittest.SkipTest(f"no in-place variant for: {op.name}")
+        if op.inplace_variant is None:
+            raise unittest.SkipTest(f"no in-place variant for: {op.name}")
 
+        def test_it(test: TestData):
             self._test(
                 f=test.f,
                 op=test.op.inplace_variant,
