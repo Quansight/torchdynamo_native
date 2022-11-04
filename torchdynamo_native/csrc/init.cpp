@@ -50,31 +50,6 @@ public:
   }
 };
 
-template <>
-struct type_caster<at::MemoryFormat> {
-public:
-  // NOLINTNEXTLINE
-  PYBIND11_TYPE_CASTER(at::MemoryFormat, _("at::MemoryFormat"));
-
-  bool load(handle src, bool)
-  {
-    PyObject *source = src.ptr();
-
-    if (THPMemoryFormat_Check(source)) {
-      auto mf = reinterpret_cast<THPMemoryFormat *>(source);
-      value = mf->memory_format;
-      return true;
-    } else {
-      return false;
-    }
-  }
-
-  static handle cast(at::ScalarType src, return_value_policy /* policy */, handle /* parent */)
-  {
-    TORCH_CHECK(false, "pybind11 casting not implemented for at::MemoryFormat.");
-  }
-};
-
 } // namespace detail
 } // namespace pybind11
 

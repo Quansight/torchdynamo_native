@@ -1,4 +1,5 @@
 // generated from: ${generator_file}
+#pragma once
 
 #include <ATen/core/TensorBody.h>
 #include <tdnat/ops_util.h>

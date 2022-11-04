@@ -59,8 +59,6 @@ DTYPE_SET = {
 SKIP_OPERATIONS = {
     "tensordot": "needs pre-processing before native kernel",
     "stft": "needs pre-processing before native kernel",
-    "corrcoef": "non-deterministic behavior",
-    "cov": "non-deterministic behavior",
     "gelu": "at::impl::variable_excluded_from_dispatch() INTERNAL ASSERT FAILED",
     "vander": "actual operation: linalg_vander",
     "where": "input is not the first argument",
@@ -79,6 +77,8 @@ NONDETERMINISTIC_OPERATIONS = {
     "empty_like",
     "new_empty",
     "bernoulli",
+    "rrelu",
+    "rrelu_",
 }
 
 
@@ -266,6 +266,7 @@ def clone_input(
 class NativeFunctionNotFoundError(Exception):
     ...
 
+
 class OverloadNotRegisteredError(Exception):
     ...
 
@@ -291,6 +292,10 @@ class TestData:
 
 
 class TestOps(unittest.TestCase):
+    def _name(self, op_name: str, inplace: bool = False) -> str:
+        name = op_name.split(".")[-1]
+        return f"{name}_" if inplace else name
+
     def _tests_for(
             self,
             device: torch.device,
@@ -299,8 +304,7 @@ class TestOps(unittest.TestCase):
             skip: Dict[str, str] = {},
             inplace: bool = False
     ) -> Iterator[Union[TestData, Exception]]:
-        name = op.name.split(".")[-1]
-        name = f"{name}_" if inplace else name
+        name = self._name(op.name, inplace)
 
         if name in skip:
             raise unittest.SkipTest(skip[name])
@@ -400,7 +404,6 @@ class TestOps(unittest.TestCase):
             ])
             raise unittest.SkipTest(str(exp_list))
 
-
     @onlyCPU
     @ops(op_db, dtypes=[torch.float])
     def test_jit(self, device: torch.device, dtype: torch.dtype, op: OpInfo):
@@ -410,7 +413,7 @@ class TestOps(unittest.TestCase):
                 op=test.op,
                 sample=test.sample,
                 dtype=test.dtype,
-                check_equality=op.name not in NONDETERMINISTIC_OPERATIONS
+                check_equality=self._name(op.name, False) not in NONDETERMINISTIC_OPERATIONS
             )
 
         self._track_errors(
@@ -430,7 +433,7 @@ class TestOps(unittest.TestCase):
                 op=test.op.inplace_variant,
                 sample=test.sample,
                 dtype=test.dtype,
-                check_equality=op.name not in NONDETERMINISTIC_OPERATIONS,
+                check_equality=self._name(op.name, True) not in NONDETERMINISTIC_OPERATIONS,
             )
 
         self._track_errors(

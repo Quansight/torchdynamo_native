@@ -128,16 +128,13 @@ class SpecSum(Spec):
         fn = nat.Function("aten_sum", 1, 1)
 
         tensor = fn.set_placeholder(0, "tensor")
-
-        dim_ptr = fn.build_array_int([fn.build_int(d) for d in self.dim])
-        dim_size = fn.build_int(len(self.dim))
-
+        dim = fn.build_optionalarrayref_int([fn.build_int(d) for d in self.dim])
         dtype = fn.build_int_from_scalar_type(self.dtype)
         dtype_opt = fn.build_optional_scalar_type(dtype)
 
         keepdim = fn.build_bool(self.keepdim)
 
-        sum = fn.add_call("sum", "sum.dim_IntList", [tensor, dim_ptr, dim_size, keepdim, dtype_opt])
+        sum = fn.add_call("sum", "sum.dim_IntList", [tensor, dim, keepdim, dtype_opt])
 
         fn.set_output_from_ref(sum)
         return fn.into_jit()([self.tensor])

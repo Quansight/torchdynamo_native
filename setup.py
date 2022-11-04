@@ -35,7 +35,8 @@ TORCH_DIR = os.path.join(ROOT_DIR, "third-party", "pytorch", "torch")
 LIB_DIR = os.path.join(ROOT_DIR, "lib")
 INCLUDE_DIR = os.path.join(ROOT_DIR, "include")
 
-GENERATED_DIR = os.path.join(LIB_DIR, "generated")
+GENERATED_LIB_DIR = os.path.join(LIB_DIR, "generated")
+GENERATED_INC_DIR = os.path.join(INCLUDE_DIR, "tdnat", "generated")
 TEMPLATES_DIR = os.path.join(LIB_DIR, "templates")
 LINK_DIR = os.path.join(BUILD_DIR, "tdnat", "lib")
 
@@ -82,12 +83,13 @@ def gen_aten_ops() -> None:
     )
     filtered_nativefunctions = filter_nativefunctions(native_functions)
 
-    fm = FileManager(GENERATED_DIR, TEMPLATES_DIR, False)
+    fm_lib = FileManager(GENERATED_LIB_DIR, TEMPLATES_DIR, False)
+    fm_inc = FileManager(GENERATED_INC_DIR, TEMPLATES_DIR, False)
 
     def native_function_key(f: NativeFunction) -> str:
         return f.root_name
 
-    fm.write_sharded(
+    fm_inc.write_sharded(
         filename="c_abi_wrappers.h",
         items=filtered_nativefunctions,
         key_fn=native_function_key,
@@ -105,7 +107,7 @@ def gen_aten_ops() -> None:
         }
     )
 
-    fm.write_sharded(
+    fm_lib.write_sharded(
         filename="register_function.cpp",
         items=filtered_nativefunctions,
         key_fn=lambda fn: fn.root_name,
@@ -123,7 +125,7 @@ def gen_aten_ops() -> None:
         }
     )
 
-    fm.write(
+    fm_lib.write(
         filename="global_register_function.cpp",
         env_callable=lambda: {
             "generator_file": __file__,
@@ -243,7 +245,6 @@ setup(
         "torchdynamo_native"
     ],
     install_requires=[
-        "torchdynamo",
         "pybind11",
         "expecttest",
     ],
