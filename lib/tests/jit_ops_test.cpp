@@ -1,5 +1,6 @@
 #include "jit_utils.h"
 
+#include <tdnat/c_abi.h>
 #include <tdnat/llvm_function_type.h>
 #include <tdnat/ops.h>
 #include <tdnat/utils.h>
@@ -15,6 +16,7 @@
 #include <ATen/ops/chunk.h>
 #include <ATen/ops/index.h>
 #include <ATen/ops/multinomial.h>
+#include <ATen/ops/rand.h>
 #include <ATen/ops/randint.h>
 #include <ATen/ops/sum.h>
 
@@ -72,8 +74,8 @@ std::unique_ptr<llvm::orc::LLJIT> create_jit(Return (*fn)(Args...))
       [](llvm::Argument &arg) { return (llvm::Value *)&arg; }
   );
 
-  builder.CreateCall(wrapped_fn, arguments);
-  builder.CreateRetVoid();
+  auto call = builder.CreateCall(wrapped_fn, arguments);
+  builder.CreateRet(call);
 
   llvm::verifyModule(*mod, &llvm::errs());
   llvm::cantFail(jit->addIRModule({std::move(mod), std::move(ctx)}));
@@ -87,9 +89,9 @@ std::unique_ptr<llvm::orc::LLJIT> create_jit(Return (*fn)(Args...))
 // NOLINTNEXTLINE
 TEST(JITTest, AddTest)
 {
-  using FnType = at::Tensor (*)(const at::Tensor &, const at::Tensor &, const at::Scalar &);
+  using FnType = const at::Tensor *(*)(const at::Tensor &, const at::Tensor &, const at::Scalar &);
 
-  auto jit = create_jit(static_cast<FnType>(at::add));
+  auto jit = create_jit(tdnat::c_abi__add_Tensor);
   auto symbol = llvm::cantFail(jit->lookup(EntryFn));
 
   // NOLINTNEXTLINE(performance-no-int-to-ptr)
@@ -102,15 +104,15 @@ TEST(JITTest, AddTest)
   auto result = (reinterpret_cast<FnType>(func))(lhs, rhs, alpha);
   auto expect = at::add(lhs, rhs, alpha);
 
-  ASSERT_TRUE(expect.equal(result));
+  ASSERT_TRUE(expect.equal(*result));
 }
 
 // NOLINTNEXTLINE
 TEST(JITTest, CatTest)
 {
-  using FnType = at::Tensor (*)(at::ArrayRef<at::Tensor>, int64_t);
+  using FnType = const at::Tensor *(*)(const at::Tensor *, int64_t, int64_t);
 
-  auto jit = create_jit(static_cast<FnType>(at::cat));
+  auto jit = create_jit(tdnat::c_abi__cat);
   auto symbol = llvm::cantFail(jit->lookup(EntryFn));
 
   // NOLINTNEXTLINE(performance-no-int-to-ptr)
@@ -118,19 +120,21 @@ TEST(JITTest, CatTest)
 
   auto t1 = at::randint(10, {1, 2, 2}); // NOLINT(cppcoreguidelines-avoid-magic-numbers)
   auto t2 = at::randint(10, {1, 2, 2}); // NOLINT(cppcoreguidelines-avoid-magic-numbers)
+  std::array<at::Tensor, 2> arr{t1, t2};
 
-  auto result = (reinterpret_cast<FnType>(func))({t1, t2}, 0);
+  auto result = (reinterpret_cast<FnType>(func))(arr.data(), arr.size(), 0);
   auto expect = at::cat({t1, t2}, 0);
 
-  ASSERT_TRUE(expect.equal(result));
+  ASSERT_TRUE(expect.equal(*result));
 }
 
 // NOLINTNEXTLINE
 TEST(JITTest, IndexTest)
 {
-  using FnType = at::Tensor (*)(const at::Tensor &, const c10::List<c10::optional<at::Tensor>> &);
+  using FnType =
+      const at::Tensor *(*)(const at::Tensor &, const c10::List<c10::optional<at::Tensor>> &);
 
-  auto jit = create_jit(static_cast<FnType>(at::index));
+  auto jit = create_jit(tdnat::c_abi__index_Tensor);
   auto symbol = llvm::cantFail(jit->lookup(EntryFn));
 
   // NOLINTNEXTLINE(performance-no-int-to-ptr)
@@ -146,59 +150,60 @@ TEST(JITTest, IndexTest)
   auto result = (reinterpret_cast<FnType>(func))(tensor, indices);
   auto expect = at::index(tensor, indices);
 
-  ASSERT_TRUE(expect.equal(result));
+  ASSERT_TRUE(expect.equal(*result));
 }
 
 // NOLINTNEXTLINE
 TEST(JITTest, ArgMinTest)
 {
-  using FnType = at::Tensor (*)(const at::Tensor &, c10::optional<int64_t>, bool);
+  using FnType = const at::Tensor *(*)(const at::Tensor &, c10::optional<int64_t> &, bool);
 
-  auto jit = create_jit(static_cast<FnType>(at::argmin));
+  auto jit = create_jit(tdnat::c_abi__argmin);
   auto symbol = llvm::cantFail(jit->lookup(EntryFn));
 
   // NOLINTNEXTLINE(performance-no-int-to-ptr)
   auto func = reinterpret_cast<void *>(symbol.getAddress());
 
   auto tensor = at::randint(10, {1, 10, 10}); // NOLINT(cppcoreguidelines-avoid-magic-numbers)
-  auto dim = 0;
+  auto dim = c10::optional<int64_t>(0);
   auto keepdim = true;
 
   auto result = (reinterpret_cast<FnType>(func))(tensor, dim, keepdim);
   auto expect = at::argmin(tensor, dim, keepdim);
 
-  ASSERT_TRUE(expect.equal(result));
+  ASSERT_TRUE(expect.equal(*result));
 }
 
 // NOLINTNEXTLINE
 TEST(JITTest, SumTest)
 {
-  using FnType =
-      at::Tensor (*)(const at::Tensor &, at::IntArrayRef, bool, c10::optional<at::ScalarType>);
+  using FnType = const at::Tensor
+      *(*)(const at::Tensor &, at::OptionalIntArrayRef &, bool, c10::optional<at::ScalarType> &);
 
-  auto jit = create_jit(static_cast<FnType>(at::sum));
+  auto jit = create_jit(tdnat::c_abi__sum_dim_IntList);
   auto symbol = llvm::cantFail(jit->lookup(EntryFn));
 
   // NOLINTNEXTLINE(performance-no-int-to-ptr)
   auto func = reinterpret_cast<void *>(symbol.getAddress());
 
   auto tensor = at::randint(10, {1, 10, 10}); // NOLINT(cppcoreguidelines-avoid-magic-numbers)
-  auto dim = std::vector<long>{0, 1};
+  auto dim_ = std::vector<long>{0, 1};
+  auto dim = at::OptionalIntArrayRef(dim_);
   auto keepdim = true;
-  auto dtype = at::ScalarType::Float;
+  auto dtype = c10::optional<at::ScalarType>(at::ScalarType::Float);
 
   auto result = (reinterpret_cast<FnType>(func))(tensor, dim, keepdim, dtype);
   auto expect = at::sum(tensor, dim, keepdim, dtype);
 
-  ASSERT_TRUE(expect.equal(result));
+  ASSERT_TRUE(expect.equal(*result));
 }
 
 // NOLINTNEXTLINE
 TEST(JITTest, ChunkTest)
 {
-  using FnType = std::vector<at::Tensor> (*)(const at::Tensor &, int64_t, int64_t);
+  using FnType = std::vector<at::Tensor> *(*)(const at::Tensor &, int64_t, int64_t);
 
-  auto jit = create_jit(static_cast<FnType>(at::chunk));
+  auto jit = create_jit(tdnat::c_abi__chunk);
   auto symbol = llvm::cantFail(jit->lookup(EntryFn));
 
   // NOLINTNEXTLINE(performance-no-int-to-ptr)
@@ -211,26 +216,27 @@ TEST(JITTest, ChunkTest)
   auto result = (reinterpret_cast<FnType>(func))(tensor, chunks, dim);
   auto expect = at::chunk(tensor, chunks, dim);
 
-  ASSERT_EQ(expect.size(), result.size());
+  ASSERT_EQ(expect.size(), result->size());
 
   auto size = expect.size();
   for (size_t i = 0; i < size; i++) {
-    ASSERT_TRUE(expect[i].equal(result[i]));
+    ASSERT_TRUE(expect[i].equal((*result)[i]));
   }
 }
 
 // NOLINTNEXTLINE
 TEST(JITTest, MultinomialTest)
 {
-  using FnType = at::Tensor (*)(const at::Tensor &, int64_t, bool, c10::optional<at::Generator>);
+  using FnType =
+      const at::Tensor *(*)(const at::Tensor &, int64_t, bool, c10::optional<at::Generator> &);
 
-  auto jit = create_jit(static_cast<FnType>(at::multinomial));
+  auto jit = create_jit(tdnat::c_abi__multinomial);
   auto symbol = llvm::cantFail(jit->lookup(EntryFn));
 
   // NOLINTNEXTLINE(performance-no-int-to-ptr)
   auto func = reinterpret_cast<void *>(symbol.getAddress());
 
-  auto tensor = at::randint(10, {10}); // NOLINT(cppcoreguidelines-avoid-magic-numbers)
+  auto tensor = at::rand({10}); // NOLINT(cppcoreguidelines-avoid-magic-numbers)
   auto samples = 4;
   auto replacement = false;
   auto generator = c10::optional<at::Generator>(c10::nullopt);
@@ -238,8 +244,8 @@ TEST(JITTest, MultinomialTest)
   auto result = (reinterpret_cast<FnType>(func))(tensor, samples, replacement, generator);
   auto expect = at::multinomial(tensor, samples, replacement, generator);
 
-  ASSERT_EQ(expect.sizes(), result.sizes());
-  ASSERT_EQ(expect.scalar_type(), result.scalar_type());
-  ASSERT_EQ(expect.device(), result.device());
+  ASSERT_EQ(expect.sizes(), result->sizes());
+  ASSERT_EQ(expect.scalar_type(), result->scalar_type());
+  ASSERT_EQ(expect.device(), result->device());
 }
 // NOLINTEND(cppcoreguidelines-avoid-magic-numbers)

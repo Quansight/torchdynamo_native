@@ -1,6 +1,6 @@
 // generated from: ${generator_file}
 
-#include "c_abi_wrappers${shard_id}.h"
+#include <tdnat/generated/c_abi_wrappers${shard_id}.h>
 
 namespace tdnat
 {

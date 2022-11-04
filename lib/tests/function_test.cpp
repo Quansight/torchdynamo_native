@@ -11,6 +11,7 @@
 #include <ATen/ops/index.h>
 #include <ATen/ops/multinomial.h>
 #include <ATen/ops/randint.h>
+#include <ATen/ops/rand.h>
 #include <ATen/ops/sum.h>
 
 #include <algorithm>
@@ -156,12 +157,10 @@ TEST(FunctionTest, SumTest)
   {
     auto tensor = fn->set_placeholder(0, "tensor");
 
-    std::vector<tdnat::Value> dim_{
+    auto dim_ = fn->build_optionalarrayref<int64_t>({
         fn->build_int<int64_t>(dim[0]),
         fn->build_int<int64_t>(dim[1]),
-    };
-    auto dim_ptr = fn->build_array<int64_t>(dim_);
-    auto dim_size = fn->build_int<int64_t>(static_cast<int64_t>(dim_.size()));
+    });
 
     auto type_ = fn->build_int_from_enum<int8_t>(type);
     auto type_opt = fn->build_optional<at::ScalarType, int8_t>(type_);
@@ -169,7 +168,7 @@ TEST(FunctionTest, SumTest)
     auto keepdim = fn->build_bool(true);
 
     auto sum =
-        fn->add_call("sum", "sum.dim_IntList", {tensor, dim_ptr, dim_size, keepdim, type_opt});
+        fn->add_call("sum", "sum.dim_IntList", {tensor, dim_, keepdim, type_opt});
 
     fn->set_output_from_ref(sum);
   }
@@ -222,7 +221,7 @@ TEST(FunctionTest, MultinomialTest)
 {
   auto data = tdnat::FunctionData{"aten_multinomial", 1, 1};
   auto fn = tdnat::Function::from_data(data);
-  auto tensor = at::randint(10, {10}); // NOLINT(cppcoreguidelines-avoid-magic-numbers)
+  auto tensor = at::rand({10}); // NOLINT(cppcoreguidelines-avoid-magic-numbers)
   auto samples = 4;
   auto replacement = false;
   auto generator = c10::optional<at::Generator>(c10::nullopt);
