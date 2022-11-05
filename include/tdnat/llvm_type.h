@@ -75,7 +75,7 @@ struct LLVMType<
     std::enable_if_t<std::numeric_limits<T>::is_integer && !std::is_same<T, bool>::value>> {
   static std::string name()
   {
-    size_t bits = sizeof(T) * 8; // NOLINT(cppcoreguidelines-avoid-magic-numbers)
+    size_t bits = sizeof(T) * CHAR_BIT;
     if (std::is_integral<T>::value) {
       return std::string("i") + std::to_string(bits);
     } else {
@@ -86,7 +86,7 @@ struct LLVMType<
   static llvm::Type *get(llvm::Module &module)
   {
     // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers)
-    return llvm::Type::getIntNTy(module.getContext(), sizeof(T) * 8);
+    return llvm::Type::getIntNTy(module.getContext(), sizeof(T) * CHAR_BIT);
   }
 };
 
@@ -310,7 +310,6 @@ struct LLVMType<c10::Stream> {
 
   static llvm::StructType *create(llvm::Module &module)
   {
-    auto &context = module.getContext();
     return llvm::StructType::create(
         {LLVMType<c10::Device>::get(module), LLVMType<int64_t>::get(module)},
         name(),
@@ -356,7 +355,6 @@ struct LLVMType<std::vector<at::Tensor>> {
 
   static llvm::StructType *create(llvm::Module &module)
   {
-    auto &context = module.getContext();
     return llvm::StructType::create(
         {LLVMType<at::Tensor *>::get(module),
          LLVMType<at::Tensor *>::get(module),

@@ -79,7 +79,7 @@ struct OptionalArrayRef {
 
   static c10::OptionalArrayRef<T> *run(const T *ptr, int64_t size)
   {
-    return new c10::OptionalArrayRef<T>({ptr, size});
+    return new c10::OptionalArrayRef<T>({ptr, static_cast<size_t>(size)});
   }
 };
 
@@ -103,10 +103,10 @@ struct List {
     return "List<" + LLVMType<T>::name() + ">";
   }
 
-  static c10::List<T> *run(T *list, size_t size)
+  static c10::List<T> *run(T *list, int64_t size)
   {
     // Constructor is marked as explicit.
-    return new c10::List<T>({list, size});
+    return new c10::List<T>({list, static_cast<size_t>(size)});
   }
 };
 

@@ -1,3 +1,9 @@
+#pragma once
+
+#include <tdnat/function.h>
+
+#include <llvm/IR/Function.h>
+
 namespace tdnat
 {
 
@@ -42,8 +48,8 @@ Value Function::build_load_for(Value val)
 template <typename T>
 Value Function::build_int(T i)
 {
-  static_assert(std::is_integral<T>::value);
-  return {builder_.getIntN(sizeof(T) * 8, i)};
+  static_assert(std::is_integral<T>::value, "type for 'build_int' should be integral.");
+  return {builder_.getIntN(sizeof(T) * CHAR_BIT, i)};
 }
 
 template <typename Repr, typename Enum>
@@ -55,7 +61,10 @@ Value Function::build_int_from_enum(Enum e)
 template <typename T>
 Value Function::build_float(T f)
 {
-  static_assert(std::is_floating_point<T>::value);
+  static_assert(
+      std::is_floating_point<T>::value,
+      "type for 'build_float' should be floating point."
+  );
   return {llvm::ConstantFP::get(fn_->getContext(), llvm::APFloat(f))};
 }
 
@@ -103,7 +112,7 @@ template <typename T>
 Value Function::build_optionalarrayref(const std::vector<Value> &elements)
 {
   auto optionalarrayref_fn = _add_api_decl<jit::OptionalArrayRef<T>>();
-  auto size = build_int<int64_t>(elements.size());
+  auto size = build_int<int64_t>(static_cast<int64_t>(elements.size()));
   auto ptr = build_array<T>(elements);
   return {builder_.CreateCall(optionalarrayref_fn, {*ptr, *size})};
 }
@@ -113,7 +122,7 @@ Value Function::build_list(const std::vector<Value> &elements)
 {
   auto list_fn = _add_api_decl<jit::List<T>>();
   auto list_ptr = build_array<T>(elements);
-  auto list_size = build_int<int64_t>(elements.size());
+  auto list_size = build_int<int64_t>(static_cast<int64_t>(elements.size()));
   return {builder_.CreateCall(list_fn, {*list_ptr, *list_size})};
 }
 
