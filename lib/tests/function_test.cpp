@@ -29,12 +29,12 @@ TEST(FunctionTest, AddTest)
   auto expect = at::add(lhs, rhs, alpha);
 
   {
-    auto lhs = fn->set_placeholder(0, "lhs");
-    auto rhs = fn->set_placeholder(1, "rhs");
+    auto lhs = fn->set_placeholder(0);
+    auto rhs = fn->set_placeholder(1);
 
     auto alpha_int = fn->build_int<int64_t>(alpha);
     auto alpha_ = fn->build_scalar<int64_t, int64_t>(alpha_int);
-    auto add = fn->add_call("add", "add.Tensor", {lhs, rhs, alpha_});
+    auto add = fn->add_call("add.Tensor", {lhs, rhs, alpha_});
 
     fn->set_output_from_ref(add);
   }
@@ -57,8 +57,8 @@ TEST(FunctionTest, CatTest)
   auto expect = at::cat({t1, t2}, dim);
 
   {
-    auto t1 = fn->set_placeholder(0, "t1");
-    auto t2 = fn->set_placeholder(1, "t2");
+    auto t1 = fn->set_placeholder(0);
+    auto t2 = fn->set_placeholder(1);
 
     auto dim_ = fn->build_int<int64_t>(dim);
     auto tensor_size = fn->build_int<int64_t>(2);
@@ -66,7 +66,7 @@ TEST(FunctionTest, CatTest)
         fn->build_load(t1),
         fn->build_load(t2),
     });
-    auto cat = fn->add_call("cat", "cat", {tensor_ptr, tensor_size, dim_});
+    auto cat = fn->add_call("cat", {tensor_ptr, tensor_size, dim_});
 
     fn->set_output_from_ref(cat);
   }
@@ -92,9 +92,9 @@ TEST(FunctionTest, IndexTest)
   auto expect = at::index(tensor, indices);
 
   {
-    auto tensor = fn->set_placeholder(0, "tensor");
-    auto i1 = fn->set_placeholder(1, "i1");
-    auto i2 = fn->set_placeholder(2, "i2");
+    auto tensor = fn->set_placeholder(0);
+    auto i1 = fn->set_placeholder(1);
+    auto i2 = fn->set_placeholder(2);
 
     auto indices = fn->build_list<c10::optional<at::Tensor>>({
         fn->build_load(fn->build_nullopt<at::Tensor>()),
@@ -102,7 +102,7 @@ TEST(FunctionTest, IndexTest)
         fn->build_load(fn->build_optional<at::Tensor, const at::Tensor &>(i2)),
     });
 
-    auto index = fn->add_call("index", "index.Tensor", {tensor, indices});
+    auto index = fn->add_call("index.Tensor", {tensor, indices});
 
     fn->set_output_from_ref(index);
   }
@@ -125,13 +125,13 @@ TEST(FunctionTest, ArgMinTest)
   auto expect = at::argmin(tensor, dim, keepdim);
 
   {
-    auto tensor = fn->set_placeholder(0, "tensor");
+    auto tensor = fn->set_placeholder(0);
 
     auto dim_ = fn->build_int<int64_t>(dim);
     auto dim_opt = fn->build_optional<int64_t, int64_t>(dim_);
     auto keepdim_ = fn->build_bool(keepdim);
 
-    auto argmin = fn->add_call("argmin", "argmin", {tensor, dim_opt, keepdim_});
+    auto argmin = fn->add_call("argmin", {tensor, dim_opt, keepdim_});
 
     fn->set_output_from_ref(argmin);
   }
@@ -155,7 +155,7 @@ TEST(FunctionTest, SumTest)
   auto expect = at::sum(tensor, dim, keepdim, type);
 
   {
-    auto tensor = fn->set_placeholder(0, "tensor");
+    auto tensor = fn->set_placeholder(0);
 
     auto dim_ = fn->build_optionalarrayref<int64_t>({
         fn->build_int<int64_t>(dim[0]),
@@ -168,7 +168,7 @@ TEST(FunctionTest, SumTest)
     auto keepdim = fn->build_bool(true);
 
     auto sum =
-        fn->add_call("sum", "sum.dim_IntList", {tensor, dim_, keepdim, type_opt});
+        fn->add_call("sum.dim_IntList", {tensor, dim_, keepdim, type_opt});
 
     fn->set_output_from_ref(sum);
   }
@@ -191,12 +191,12 @@ TEST(FunctionTest, ChunkTest)
   auto expect = at::chunk(tensor, chunks, dim);
 
   {
-    auto tensor = fn->set_placeholder(0, "tensor");
+    auto tensor = fn->set_placeholder(0);
 
     auto chunks_ = fn->build_int<int64_t>(chunks);
     auto dim_ = fn->build_int<int64_t>(dim);
 
-    auto chunk = fn->add_call("chunk", "chunk", {tensor, chunks_, dim_});
+    auto chunk = fn->add_call("chunk", {tensor, chunks_, dim_});
 
     std::vector<tdnat::Value> values;
 
@@ -228,14 +228,14 @@ TEST(FunctionTest, MultinomialTest)
   auto expect = at::multinomial(tensor, samples, replacement, generator);
 
   {
-    auto tensor = fn->set_placeholder(0, "tensor");
+    auto tensor = fn->set_placeholder(0);
 
     auto samples_ = fn->build_int<int64_t>(samples);
     auto replacement_ = fn->build_bool(replacement);
     auto generator = fn->build_nullopt<at::Generator>();
 
     auto result =
-        fn->add_call("multinomial", "multinomial", {tensor, samples_, replacement_, generator});
+        fn->add_call("multinomial", {tensor, samples_, replacement_, generator});
 
     fn->set_output_from_ref(result);
   }
