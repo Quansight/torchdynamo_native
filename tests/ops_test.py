@@ -107,15 +107,15 @@ def get_input_tensors(arguments: Sequence[nat.AlignedArg]) -> List[torch.Tensor]
     return list(concatMap(lambda arg: get_tensors_in(arg.value), arguments))
 
 
-def create_value_for(index: int, value: Any, name: str, type: Type, fn: nat.Function) -> nat.Value:
+def create_value_for(index: int, value: Any, type: Type, fn: nat.Function) -> nat.Value:
     if type == BaseType(BaseTy.Tensor):
-        return fn.set_placeholder(index, name)
+        return fn.set_placeholder(index)
 
     elif type == OptionalType(BaseType(BaseTy.Tensor)):
         if value is None:
             return fn.build_nullopt_tensor()
         else:
-            return fn.build_optional_from_ref_tensor(fn.set_placeholder(index, name))
+            return fn.build_optional_from_ref_tensor(fn.set_placeholder(index))
 
     raise ValueError(f"expected Tensor or Optional[Tensor] type: got {type}")
 
@@ -137,17 +137,11 @@ def replace_value_for_inputs(
 
             new_value = []
             for tensor in arg.value:
-                new_value.append(create_value_for(
-                    index=placeholder_index,
-                    value=arg.value,
-                    name=arg.param.name,
-                    type=type.elem,
-                    fn=fn
-                ))
+                new_value.append(create_value_for(placeholder_index, arg.value, type.elem, fn))
                 placeholder_index += int(tensor is not None)
 
         else:
-            new_value = create_value_for(placeholder_index, arg.value, arg.param.name, type, fn)
+            new_value = create_value_for(placeholder_index, arg.value, type, fn)
             placeholder_index += 1
 
         return arg.with_value(new_value)
@@ -215,7 +209,7 @@ def build_function_for_native(
         bindings=kernel.sig().arguments()
     )
 
-    result = fn.add_call("result", op_name, gen_values(bindings_and_arguments, fn))
+    result = fn.add_call(op_name, gen_values(bindings_and_arguments, fn))
 
     if kernel.return_type() == ConstPointerCType(VectorCType(BaseCType(tensorT))):
         fn.set_output_from_refs([

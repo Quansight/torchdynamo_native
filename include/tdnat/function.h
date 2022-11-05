@@ -59,16 +59,14 @@ public:
       FunctionData data
   );
 
-  Value set_placeholder(int i, const std::string &name);
+  // Returns a pointer to the i-th input tensor.
+  // Inserts a GEP instruction to the function, and returns its result.
+  Value set_placeholder(int i);
 
   std::vector<Value> set_output_from_refs(const std::vector<Value> &outputs);
   Value set_output_from_ref(const Value &output);
 
-  Value add_call(
-      const std::string &symbolname,
-      const std::string &opname,
-      const std::vector<Value> &args
-  );
+  Value add_call(const std::string &opname, const std::vector<Value> &args);
 
   void dump();
 
@@ -131,11 +129,6 @@ private:
 
   llvm::Function *fn_;
   llvm::IRBuilder<> builder_;
-
-  // Map of symbol names to llvm::Value*.
-  // Useful when one expression depends on some other expression
-  // stored on a specific symbol.
-  std::unordered_map<std::string, llvm::Value *> symbolmap_;
 
   // Map of function names to their actual address.
   // Used for registering those functions in the JIT.

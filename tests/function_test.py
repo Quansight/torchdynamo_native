@@ -23,12 +23,12 @@ class SpecAdd(Spec):
     def jit(self) -> List[torch.Tensor]:
         fn = nat.Function("aten_add", 2, 1)
 
-        lhs = fn.set_placeholder(0, "lhs")
-        rhs = fn.set_placeholder(1, "rhs")
+        lhs = fn.set_placeholder(0)
+        rhs = fn.set_placeholder(1)
 
         alpha_ = fn.build_int(self.alpha)
         alpha_ = fn.build_scalar_int(alpha_)
-        add = fn.add_call("add", "add.Tensor", [lhs, rhs, alpha_])
+        add = fn.add_call("add.Tensor", [lhs, rhs, alpha_])
 
         fn.set_output_from_ref(add)
         return fn.into_jit()([self.lhs, self.rhs])
@@ -46,8 +46,8 @@ class SpecCat(Spec):
     def jit(self) -> List[torch.Tensor]:
         fn = nat.Function("aten_cat", 2, 1)
 
-        t1 = fn.set_placeholder(0, "t1")
-        t2 = fn.set_placeholder(1, "t2")
+        t1 = fn.set_placeholder(0)
+        t2 = fn.set_placeholder(1)
 
         dim = fn.build_int(self.dim)
         tensorlist_ptr = fn.build_array_tensor([
@@ -55,7 +55,7 @@ class SpecCat(Spec):
             fn.build_load(t2),
         ])
         tensorlist_size = fn.build_int(2)
-        cat = fn.add_call("cat", "cat", [tensorlist_ptr, tensorlist_size, dim])
+        cat = fn.add_call("cat", [tensorlist_ptr, tensorlist_size, dim])
 
         fn.set_output_from_ref(cat)
         return fn.into_jit()([self.t1, self.t2])
@@ -74,9 +74,9 @@ class SpecIndex(Spec):
     def jit(self) -> List[torch.Tensor]:
         fn = nat.Function("aten_index", 3, 1)
 
-        tensor = fn.set_placeholder(0, "tensor")
-        i1 = fn.set_placeholder(1, "i1")
-        i2 = fn.set_placeholder(2, "i2")
+        tensor = fn.set_placeholder(0)
+        i1 = fn.set_placeholder(1)
+        i2 = fn.set_placeholder(2)
 
         indices = fn.build_list_optional_tensor([
             fn.build_load(fn.build_nullopt_tensor()),
@@ -84,7 +84,7 @@ class SpecIndex(Spec):
             fn.build_load(fn.build_optional_from_ref_tensor(i2)),
         ])
 
-        index = fn.add_call("index", "index.Tensor", [tensor, indices])
+        index = fn.add_call("index.Tensor", [tensor, indices])
 
         fn.set_output_from_ref(index)
         return fn.into_jit()([self.tensor, self.i0, self.i1])
@@ -102,13 +102,13 @@ class SpecArgMin(Spec):
     def jit(self) -> List[torch.Tensor]:
         fn = nat.Function("aten_argmin", 1, 1)
 
-        tensor = fn.set_placeholder(0, "tensor")
+        tensor = fn.set_placeholder(0)
 
         dim = fn.build_int(self.dim)
         dim_opt = fn.build_optional_int(dim)
         keepdim = fn.build_bool(self.keepdim)
 
-        argmin = fn.add_call("argmin", "argmin", [tensor, dim_opt, keepdim])
+        argmin = fn.add_call("argmin", [tensor, dim_opt, keepdim])
 
         fn.set_output_from_ref(argmin)
         return fn.into_jit()([self.tensor])
@@ -127,14 +127,14 @@ class SpecSum(Spec):
     def jit(self) -> List[torch.Tensor]:
         fn = nat.Function("aten_sum", 1, 1)
 
-        tensor = fn.set_placeholder(0, "tensor")
+        tensor = fn.set_placeholder(0)
         dim = fn.build_optionalarrayref_int([fn.build_int(d) for d in self.dim])
         dtype = fn.build_int_from_scalar_type(self.dtype)
         dtype_opt = fn.build_optional_scalar_type(dtype)
 
         keepdim = fn.build_bool(self.keepdim)
 
-        sum = fn.add_call("sum", "sum.dim_IntList", [tensor, dim, keepdim, dtype_opt])
+        sum = fn.add_call("sum.dim_IntList", [tensor, dim, keepdim, dtype_opt])
 
         fn.set_output_from_ref(sum)
         return fn.into_jit()([self.tensor])
@@ -152,12 +152,12 @@ class SpecChunk(Spec):
     def jit(self) -> List[torch.Tensor]:
         fn = nat.Function("aten_chunk", 1, 4)
 
-        tensor = fn.set_placeholder(0, "tensor")
+        tensor = fn.set_placeholder(0)
 
         chunks = fn.build_int(self.chunks)
         dim = fn.build_int(self.dim)
 
-        chunk = fn.add_call("chunk", "chunk", [tensor, chunks, dim])
+        chunk = fn.add_call("chunk", [tensor, chunks, dim])
 
         values = [
             fn.build_vector_index(chunk, fn.build_int(i))
