@@ -72,11 +72,9 @@ Function::Function(
   init();
 }
 
-Value Function::set_placeholder(int i, const std::string &name)
+Value Function::set_placeholder(int i)
 {
-  // Get the i-th input tensor.
-  symbolmap_[name] = builder_.CreateGEP(fn_->getArg(0), builder_.getInt64(i));
-  return {symbolmap_[name]};
+  return {builder_.CreateGEP(fn_->getArg(0), builder_.getInt64(i))};
 }
 
 std::vector<Value> Function::set_output_from_refs(const std::vector<Value> &outputs)
@@ -97,11 +95,7 @@ Value Function::set_output_from_ref(const Value &output)
   return set_output_from_refs({output})[0];
 }
 
-Value Function::add_call(
-    const std::string &symbolname,
-    const std::string &opname,
-    const std::vector<Value> &args
-)
+Value Function::add_call(const std::string &opname, const std::vector<Value> &args)
 {
   auto opref_ = get_aten_op(opname);
   TORCH_CHECK(opref_.has_value(), "PyTorch operation not registered: ", opname);
@@ -128,14 +122,7 @@ Value Function::add_call(
   }
 
   auto call = builder_.CreateCall(opfn, values);
-
-  if (opref.returns_on_memory()) {
-    symbolmap_[symbolname] = values[0];
-  } else {
-    symbolmap_[symbolname] = call;
-  }
-
-  return {symbolmap_[symbolname]};
+  return {opref.returns_on_memory() ? values[0] : call};
 }
 
 Value Function::build_bool(bool b)
