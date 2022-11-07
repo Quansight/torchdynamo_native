@@ -1,10 +1,13 @@
+import torch
+import torch.fx
+
 from dataclasses import dataclass, replace
-from typing import Any, Dict, List, Optional, Sequence
+from typing import Any, Dict, List, Sequence
 
 from torchgen.model import Argument, FunctionSchema, NativeFunction
 
 from torchdynamo_native.convert import torch_isinstance
-from torchdynamo_native.utils import NATIVE_FUNCTIONS_OVERLOAD_MAP
+from torchdynamo_native.utils import NATIVE_FUNCTIONS_OVERLOAD_MAP, ExceptionGroup
 
 
 @dataclass(frozen=True)
@@ -61,27 +64,30 @@ def align_arguments(
     return [align_to_parameter(i, param) for i, param in enumerate(parameters)]
 
 
-def matches_function_schema(
+def check_schema_match(
         func: FunctionSchema,
         args: Sequence[Any],
         kwargs: Dict[str, Any]
-) -> bool:
+) -> None:
     parameters = func.arguments.flat_all
 
-    try:
-        # Check whether we have enough arguments.
-        aligned_arguments = align_arguments(parameters, args, kwargs)
-    except ValueError:
-        return False
+    # Check whether we have enough arguments.
+    aligned_arguments = align_arguments(parameters, args, kwargs)
 
     # Check whether we have too many arguments. Either:
     #   - There are more arguments than formal parameters.
     if len(parameters) < len(args) + len(kwargs):
-        return False
+        raise ValueError(
+            "invalid number of parameters. "
+            f"Expected {len(parameters)}. Got: {len(args) + len(kwargs)}."
+        )
 
     #   - There are some extra keyword arguments not being used.
     if len(set(kwargs.keys()) - set([param.name for param in parameters])) != 0:
-        return False
+        raise ValueError(
+            "unexpected keyword arguments: "
+            f"{set(kwargs.keys()) - set([param.name for param in parameters])}"
+        )
 
     # Check whether each parameter type matches the argument type.
     for param, arg in zip(parameters, aligned_arguments):
@@ -90,22 +96,27 @@ def matches_function_schema(
         if arg.default:
             continue
 
-        if not torch_isinstance(arg.value, param.type):
-            return False
-
-    return True
+        if not (isinstance(arg.value, torch.fx.Node) or torch_isinstance(arg.value, param.type)):
+            raise ValueError(
+                f"argument value not instance of {param.type}: {arg.value} ({type(arg.value)})"
+            )
 
 
 def find_native_function(
         op_name: str,
         args: Sequence[Any],
         kwargs: Dict[str, Any]
-) -> Optional[NativeFunction]:
+) -> NativeFunction:
     if op_name not in NATIVE_FUNCTIONS_OVERLOAD_MAP:
         raise ValueError(f"operation not in 'native_functions.yaml': {op_name}")
 
-    for ovl in NATIVE_FUNCTIONS_OVERLOAD_MAP[op_name]:
-        if matches_function_schema(ovl.f.func, args, kwargs):
-            return ovl.f
+    exceptions = []
 
-    return None
+    for ovl in NATIVE_FUNCTIONS_OVERLOAD_MAP[op_name]:
+        try:
+            check_schema_match(ovl.f.func, args, kwargs)
+            return ovl.f
+        except Exception as e:
+            exceptions.append(e)
+
+    raise ExceptionGroup(f"could not find matching function overload for: {op_name}", exceptions)
