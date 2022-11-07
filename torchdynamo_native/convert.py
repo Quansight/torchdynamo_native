@@ -233,6 +233,9 @@ def py_to_value(thing: Any, ctype: CTypeWithPointer, fn: Function) -> Value:
         if isinstance(thing, torch.memory_format):
             return fn.build_int_from_memory_format(thing)
 
+        if isinstance(thing, torch.dtype):
+            return fn.build_int_from_scalar_type(thing)
+
     elif ctype == BaseCType(longT):
         if isinstance(thing, int):
             return fn.build_int(thing)

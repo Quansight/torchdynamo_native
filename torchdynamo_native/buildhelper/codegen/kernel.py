@@ -249,7 +249,7 @@ class DispatchKernel(Kernel):
         return f"at::_ops::{self.f.func.name.unambiguous_name()}"
 
     def sig(self) -> Signature:
-        return DispatcherSignature.from_schema(self.f.func)
+        return DispatcherSignature.from_schema(self.f.func, symint=False)
 
     def incl(self) -> str:
         return f"{self.f.root_name}_ops"
