@@ -50,12 +50,6 @@ from typing import (
 from torchdynamo_native.buildhelper.codegen.kernel import CABIArgument, ConstPointerCType
 from torchdynamo_native.utils import native_function_overloaded_name
 
-DTYPE_SET = {
-    torch.float,
-    torch.long,
-    torch.complex128,
-}
-
 SKIP_OPERATIONS = {
     "tensordot": "needs pre-processing before native kernel",
     "stft": "needs pre-processing before native kernel",
@@ -80,13 +74,6 @@ NONDETERMINISTIC_OPERATIONS = {
     "rrelu",
     "rrelu_",
 }
-
-
-def pick_dtype_for(op: OpInfo, device) -> torch.dtype:
-    for dtype in DTYPE_SET:
-        if op.supports_dtype(dtype, device):
-            return dtype
-    raise ValueError(f"couldn't find dtype. Available: {op.supported_dtypes(device)}")
 
 
 def get_tensors_in(thing: Any) -> List[torch.Tensor]:
@@ -306,7 +293,7 @@ class TestOps(unittest.TestCase):
         # Overwrite the actual dtype.
         # We only want to check whether the PyTorch operation is
         # running correctly.
-        dtype = pick_dtype_for(op, device)
+        dtype = nat.testing.pick_dtype_for(op, device)
 
         samples = tuple(
             op.sample_inputs(device, dtype, requires_grad=False)
@@ -319,9 +306,6 @@ class TestOps(unittest.TestCase):
                     args=[sample.input, *sample.args],
                     kwargs=sample.kwargs
                 )
-
-                # Satisfying the typing hints.
-                assert native_function is not None
 
                 yield TestData(op, native_function, sample, dtype)
             except Exception as e:
