@@ -43,10 +43,8 @@ LINK_DIR = os.path.join(BUILD_DIR, "tdnat", "lib")
 TYPE_BLOCKLIST = [
     BaseType(BaseTy.Dimname),
     BaseType(BaseTy.QScheme),
-    BaseType(BaseTy.SymInt),
     BaseType(BaseTy.Storage),
     BaseType(BaseTy.Stream),
-    ListType(BaseType(BaseTy.SymInt), None),
 ]
 
 SHARDS = 5
