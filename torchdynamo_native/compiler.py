@@ -134,6 +134,7 @@ def llvmjit(gm: torch.fx.GraphModule, example_inputs: List[torch.Tensor]) -> Cal
         else:
             raise ValueError(f"invalid fx.Node operation: {node.op}")
 
+    function.dump()
     jit_function = function.into_jit()
 
     def wrapper(*args):
