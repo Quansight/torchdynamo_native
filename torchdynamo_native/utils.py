@@ -1,5 +1,6 @@
 import os
 import torchgen
+import traceback
 
 from collections import defaultdict
 from dataclasses import dataclass
@@ -16,6 +17,22 @@ from torchgen.model import (
 from torchgen.gen import ParsedYaml, parse_native_yaml
 
 from torchdynamo_native.buildhelper.codegen.kernel import Kernel
+
+
+@dataclass(frozen=True)
+class ExceptionGroup(Exception):
+    message: str
+    exceptions: List[Exception]
+
+    def __str__(self) -> str:
+        # First, print the message.
+        # Then, print the stacktrace of all the inner exceptions.
+        return "\n".join([
+            self.message,
+            ""  # Empty line
+        ] + [
+            "".join(traceback.format_exception(type(e), e, e.__traceback__)) for e in self.exceptions
+        ])
 
 
 @dataclass(frozen=True)

@@ -1,6 +1,5 @@
 import torchdynamo_native as nat
 
-import dataclasses
 import unittest
 import torch
 
@@ -29,7 +28,6 @@ from torchgen.model import (
 
 from torchgen.api.types import (
     BaseCType,
-    Binding,
     VectorCType,
     tensorT,
 )
@@ -47,14 +45,23 @@ from typing import (
     Union
 )
 
-from torchdynamo_native.buildhelper.codegen.kernel import CABIArgument, ConstPointerCType
+from torchdynamo_native.buildhelper.codegen.kernel import ConstPointerCType
+from torchdynamo_native.compiler import (
+    gen_values,
+    get_bindings_and_arguments
+)
+from torchdynamo_native.testing.utils import (
+    NONDETERMINISTIC_OPERATIONS,
+    EagerFailedError,
+    NativeFunctionNotFoundError,
+    OverloadNotRegisteredError,
+    TestData,
+    UnexpectedReturnValueError,
+    VoidFunctionError,
+    equals,
+    similar
+)
 from torchdynamo_native.utils import native_function_overloaded_name
-
-DTYPE_SET = {
-    torch.float,
-    torch.long,
-    torch.complex128,
-}
 
 SKIP_OPERATIONS = {
     "tensordot": "needs pre-processing before native kernel",
@@ -63,30 +70,6 @@ SKIP_OPERATIONS = {
     "vander": "actual operation: linalg_vander",
     "where": "input is not the first argument",
 }
-
-NONDETERMINISTIC_OPERATIONS = {
-    "multinomial",
-    "randn",
-    "randn_like",
-    "randint",
-    "randint_like",
-    "rand",
-    "rand_like",
-    "normal",
-    "empty",
-    "empty_like",
-    "new_empty",
-    "bernoulli",
-    "rrelu",
-    "rrelu_",
-}
-
-
-def pick_dtype_for(op: OpInfo, device) -> torch.dtype:
-    for dtype in DTYPE_SET:
-        if op.supports_dtype(dtype, device):
-            return dtype
-    raise ValueError(f"couldn't find dtype. Available: {op.supported_dtypes(device)}")
 
 
 def get_tensors_in(thing: Any) -> List[torch.Tensor]:
@@ -152,39 +135,6 @@ def replace_value_for_inputs(
     ]
 
 
-def get_bindings_and_arguments(
-        arguments: Sequence[nat.AlignedArg],
-        bindings: Sequence[Binding]
-) -> List[Tuple[Binding, nat.AlignedArg]]:
-    bindings_and_arguments = {}
-    binding_for = {b.name: (i, b) for i, b in enumerate(bindings)}
-
-    for arg in arguments:
-        name = arg.param.name
-        if name in binding_for:
-            bindings_and_arguments[binding_for[name]] = arg
-        else:
-            raise ValueError(f"can't lower {name}: {arg.param}")
-
-    return [(b, arg) for ((_, b), arg) in sorted(bindings_and_arguments.items())]
-
-
-def gen_values(
-        bindings_and_arguments: List[Tuple[Binding, nat.AlignedArg]],
-        fn: nat.Function
-) -> List[nat.Value]:
-
-    def binding_to_values(pair: Tuple[Binding, nat.AlignedArg]) -> List[nat.Value]:
-        binding, arg = pair
-        py = nat.str_to_py(arg.value, arg.param.type) if arg.default else arg.value
-        return [
-            nat.py_to_value(py, c_abi.type, fn)
-            for c_abi in CABIArgument.from_binding(binding)
-        ]
-
-    return list(concatMap(binding_to_values, bindings_and_arguments))
-
-
 def build_function_for_native(
         f: NativeFunction,
         op_name: str,
@@ -227,20 +177,6 @@ def build_function_for_native(
     return run
 
 
-def equals(lhs: torch.Tensor, rhs: torch.Tensor, dtype: torch.dtype) -> bool:
-    if dtype == torch.int:
-        return torch.equal(lhs, rhs)
-    return bool(torch.isclose(lhs.to_dense(), rhs.to_dense(), equal_nan=True).all())
-
-
-def similar(lhs: torch.Tensor, rhs: torch.Tensor) -> bool:
-    if lhs.dtype != rhs.dtype:
-        return False
-    if lhs.shape != rhs.shape:
-        return False
-    return True
-
-
 def clone_input(
         input: Union[torch.Tensor, Tuple[torch.Tensor], List[torch.Tensor]]
 ) -> Union[torch.Tensor, Tuple[torch.Tensor, ...], List[torch.Tensor]]:
@@ -255,34 +191,6 @@ def clone_input(
         return tuple(t.clone() for t in input)
 
     raise ValueError("input is not a Tensor.")
-
-
-class NativeFunctionNotFoundError(Exception):
-    ...
-
-
-class OverloadNotRegisteredError(Exception):
-    ...
-
-
-class EagerFailedError(Exception):
-    ...
-
-
-class VoidFunctionError(Exception):
-    ...
-
-
-class UnexpectedReturnValueError(Exception):
-    ...
-
-
-@dataclasses.dataclass
-class TestData:
-    op: OpInfo
-    f: NativeFunction
-    sample: SampleInput
-    dtype: torch.dtype
 
 
 class TestOps(unittest.TestCase):
@@ -306,7 +214,7 @@ class TestOps(unittest.TestCase):
         # Overwrite the actual dtype.
         # We only want to check whether the PyTorch operation is
         # running correctly.
-        dtype = pick_dtype_for(op, device)
+        dtype = nat.testing.pick_dtype_for(op, device)
 
         samples = tuple(
             op.sample_inputs(device, dtype, requires_grad=False)
@@ -319,9 +227,6 @@ class TestOps(unittest.TestCase):
                     args=[sample.input, *sample.args],
                     kwargs=sample.kwargs
                 )
-
-                # Satisfying the typing hints.
-                assert native_function is not None
 
                 yield TestData(op, native_function, sample, dtype)
             except Exception as e:

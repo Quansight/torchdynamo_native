@@ -1,3 +1,7 @@
+import logging
+
+logger = logging.getLogger(__name__)
+
 try:
     import torch
 
@@ -17,7 +21,22 @@ try:
         align_arguments,
         find_native_function,
     )
-except Exception:
-    pass
+
+    from torchdynamo_native.compiler import (
+        llvmjit
+    )
+
+    import torchdynamo_native.testing as testing
+
+except Exception as e:
+    import warnings
+    import traceback
+
+    warnings.warn(
+        "failed when trying to import the full 'torchdynamo_native'. "
+        "To show the error, set the logging level to DEBUG."
+    )
+
+    logger.debug("\n" + "".join(traceback.format_exception(type(e), e, e.__traceback__)))
 
 import torchdynamo_native.utils as utils
