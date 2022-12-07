@@ -22,6 +22,9 @@ from torchdynamo_native.buildhelper.codegen.kernel import (
     is_c_array_ref_like_type,
     is_c_enum_type,
     is_c_ilist_ref_like_type,
+    is_c_optional_symint_array_ref_type,
+    is_c_optional_symint_type,
+    is_c_symint_array_ref_type,
 )
 
 
@@ -37,13 +40,35 @@ def pre_processing(arguments: Sequence[CABIArgument]) -> List[str]:
         if len(args) == 1 and is_c_enum_type(type):
             body.append(f"auto {binding.name} = static_cast<{type.cpp_type()}>({args[0].name});")
 
+        elif len(args) == 1 and is_c_optional_symint_array_ref_type(type):
+            arg = args[0].name
+            body.append(
+                f"auto {binding.name} = {arg}.has_value() ? "
+                f"c10::make_optional(c10::fromIntArrayRefSlow(*{arg})) : "
+                "c10::nullopt;"
+            )
+
+        elif len(args) == 1 and is_c_optional_symint_type(type):
+            arg = args[0].name
+            body.append(
+                f"auto {binding.name} = {arg}.has_value() ? "
+                f"c10::make_optional(c10::SymInt(*{arg})) : "
+                "c10::nullopt;"
+            )
+
         elif len(args) == 2:
             args_map = {a.name.split("__")[1]: a for a in args}
 
             arg_ptr = args_map["ptr"].name
             arg_size = args_map["size"].name
 
-            if is_c_array_ref_like_type(type):
+            if is_c_symint_array_ref_type(type):
+                body.append(
+                    f"auto {binding.name} = "
+                    f"c10::fromIntArrayRefSlow(at::IntArrayRef({arg_ptr}, {arg_size}));"
+                )
+
+            elif is_c_array_ref_like_type(type):
                 body.append(f"auto {binding.name} = {binding.type}({arg_ptr}, {arg_size});")
 
             elif is_c_ilist_ref_like_type(type):
