@@ -23,7 +23,8 @@ try:
     )
 
     from torchdynamo_native.compiler import (
-        llvmjit
+        aot_llvmjit,
+        llvmjit,
     )
 
     import torchdynamo_native.testing as testing

@@ -2,7 +2,7 @@ import torch
 import torch.fx
 
 from dataclasses import dataclass, replace
-from typing import Any, Dict, List, Sequence
+from typing import Any, Dict, List, Sequence, Tuple, Union
 
 from torchgen.model import Argument, FunctionSchema, NativeFunction
 
@@ -103,10 +103,17 @@ def check_schema_match(
 
 
 def find_native_function(
-        op_name: str,
+        op_name: Union[str, Tuple[str, str]],
         args: Sequence[Any],
         kwargs: Dict[str, Any]
 ) -> NativeFunction:
+    if isinstance(op_name, tuple):
+        name, overload = op_name
+        for ovl in NATIVE_FUNCTIONS_OVERLOAD_MAP[name]:
+            if ovl.f.func.name.overload_name == overload:
+                return ovl.f
+        raise ValueError(f"could not find operation: {name} (overload: {overload})")
+
     if op_name not in NATIVE_FUNCTIONS_OVERLOAD_MAP:
         raise ValueError(f"operation not in 'native_functions.yaml': {op_name}")
 
