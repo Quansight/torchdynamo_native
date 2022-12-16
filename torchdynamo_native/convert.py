@@ -56,7 +56,7 @@ def str_to_reduction(s: str) -> TorchReduction:
 def str_to_py(thing: str, ty: Type) -> Any:
     """Parses the default string into a Python value.
     """
-    if ty == BaseType(BaseTy.int):
+    if ty in (BaseType(BaseTy.int), BaseType(BaseTy.SymInt)):
         # Special case: at::Reduction.
         # Defer translation to Function.
         if isinstance(thing, str) and is_reduction_str(thing):

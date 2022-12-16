@@ -23,10 +23,9 @@ try:
     )
 
     from torchdynamo_native.compiler import (
-        llvmjit
+        aot_llvmjit,
+        llvmjit,
     )
-
-    import torchdynamo_native.testing as testing
 
 except Exception as e:
     import warnings
@@ -34,7 +33,7 @@ except Exception as e:
 
     warnings.warn(
         "failed when trying to import the full 'torchdynamo_native'. "
-        "To show the error, set the logging level to DEBUG."
+        f"To show the error, set the logging level to DEBUG: {e}"
     )
 
     logger.debug("\n" + "".join(traceback.format_exception(type(e), e, e.__traceback__)))

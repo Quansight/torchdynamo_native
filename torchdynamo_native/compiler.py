@@ -2,10 +2,11 @@ import logging
 import torch
 import torch.fx
 
-from typing import Any, Callable, Dict, List, Sequence, Tuple, Union
-
+from torch._dynamo.optimizations import BACKENDS
+from torch._dynamo.optimizations.training import AotAutogradStrategy
 from torchgen.api.types import Binding
 from torchgen.utils import concatMap
+from typing import Any, Callable, Dict, List, Sequence, Tuple, Union
 
 from torchdynamo_native._C import Function, Value
 from torchdynamo_native.buildhelper.codegen.kernel import CABIArgument
@@ -16,7 +17,7 @@ from torchdynamo_native.utils import get_kernel, native_function_overloaded_name
 logger = logging.getLogger(__name__)
 
 
-def resolve_target_name(target: Union[str, Callable]) -> str:
+def resolve_target_name(target: Union[str, Callable]) -> Union[str, Tuple[str, str]]:
     if isinstance(target, str):
         return target
 
@@ -24,13 +25,22 @@ def resolve_target_name(target: Union[str, Callable]) -> str:
 
     if module == "torch":
         return name
+    elif module == "torch._ops.aten":
+        terms = name.split(".")
+        assert len(terms) == 2, f"invalid target terms: {terms}"
+
+        name, overload = terms
+        if overload == "default":
+            return name, ""
+        else:
+            return name, overload
     elif module == "_operator":
         if name == "truediv":
             return "div"
         else:
             return name
     else:
-        raise ValueError(f"couldn't resolve target: {module}.{name}")
+        raise ValueError(f"couldn't resolve target: {module} -> {name}")
 
 
 def build_debug_target_name(target: Union[str, Callable]) -> str:
@@ -140,3 +150,11 @@ def llvmjit(gm: torch.fx.GraphModule, example_inputs: List[torch.Tensor]) -> Cal
         return jit_function.run(list(args))  # type: ignore
 
     return wrapper
+
+
+class AotLLVMJit(AotAutogradStrategy):
+    def candidate(self):
+        return BACKENDS["aot_autograd"](self.gm, self.example_inputs, fw_compiler=llvmjit)
+
+
+aot_llvmjit = AotLLVMJit.compile_fn

@@ -29,9 +29,12 @@ from torchgen.api.types import (
     longT,
     memoryFormatT,
     optionalIntArrayRefT,
+    optionalSymIntArrayRefT,
     scalarT,
     scalarTypeT,
     stringT,
+    SymIntT,
+    symIntArrayRefT,
     tensorT,
     tensorListT,
     voidT,
@@ -66,6 +69,18 @@ def is_c_ilist_ref_like_type(type: CType) -> bool:
     return False
 
 
+def is_c_symint_array_ref_type(type: CType) -> bool:
+    return isinstance(type, BaseCType) and type.type is symIntArrayRefT
+
+
+def is_c_optional_symint_type(type: CType) -> bool:
+    return type == OptionalCType(BaseCType(SymIntT))
+
+
+def is_c_optional_symint_array_ref_type(type: CType) -> bool:
+    return type == BaseCType(optionalSymIntArrayRefT)
+
+
 def group_by_binding(arguments: Sequence["CABIArgument"]) -> Dict[Binding, List["CABIArgument"]]:
     groups = defaultdict(list)
 
@@ -98,6 +113,9 @@ class CABIArgument:
         if type.type in (boolT, longT, doubleT):
             return [CABIArgument(name=binding.name, type=type, binding=binding)]
 
+        if type.type is SymIntT:
+            return [CABIArgument(name=binding.name, type=BaseCType(longT), binding=binding)]
+
         if is_c_enum_type(type):
             return [
                 CABIArgument(name=f"{binding.name}__int", type=BaseCType(charT), binding=binding)
@@ -106,13 +124,30 @@ class CABIArgument:
         if type.type in (deviceT, optionalIntArrayRefT):
             return [CABIArgument(name=binding.name, type=MutRefCType(type), binding=binding)]
 
-        if type.type in (intArrayRefT, stringT, tensorListT, iTensorListRefT, iOptTensorListRefT):
+        if type.type is optionalSymIntArrayRefT:
+            return [
+                CABIArgument(
+                    name=f"{binding.name}__",
+                    type=MutRefCType(BaseCType(optionalIntArrayRefT)),
+                    binding=binding
+                )
+            ]
+
+        if type.type in (
+                intArrayRefT,
+                stringT,
+                tensorListT,
+                iTensorListRefT,
+                iOptTensorListRefT,
+                symIntArrayRefT
+        ):
             elem_type_of = {
                 intArrayRefT:       longT,
                 stringT:            CharT,
                 tensorListT:        tensorT,
                 iTensorListRefT:    tensorT,
                 iOptTensorListRefT: OptionalCType(BaseCType(tensorT)),
+                symIntArrayRefT:    longT,
             }
 
             return CABIArgument.from_binding_with_type(
@@ -132,6 +167,15 @@ class CABIArgument:
                 return CABIArgument.from_binding_with_type(binding, type.elem)
             else:
                 return [CABIArgument(name=binding.name, type=type, binding=binding)]
+
+        elif type == OptionalCType(BaseCType(SymIntT)):
+            return [
+                CABIArgument(
+                    name=f"{binding.name}__",
+                    type=MutRefCType(OptionalCType(BaseCType(longT))),
+                    binding=binding
+                )
+            ]
 
         elif isinstance(type, OptionalCType):
             return [CABIArgument(name=binding.name, type=MutRefCType(type), binding=binding)]
@@ -249,7 +293,7 @@ class DispatchKernel(Kernel):
         return f"at::_ops::{self.f.func.name.unambiguous_name()}"
 
     def sig(self) -> Signature:
-        return DispatcherSignature.from_schema(self.f.func, symint=False)
+        return DispatcherSignature.from_schema(self.f.func)
 
     def incl(self) -> str:
         return f"{self.f.root_name}_ops"
